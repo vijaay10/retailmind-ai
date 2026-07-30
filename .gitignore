@@ -66,3 +66,4 @@ ml/notebooks/**/*.ipynb_checkpoints/
 # ── Logs & local scratch ──────────────────────────────
 *.log
 tmp/
+.local/

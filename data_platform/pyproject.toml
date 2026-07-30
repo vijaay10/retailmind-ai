@@ -17,6 +17,8 @@ dependencies = [
     "structlog>=24.4",
     "tenacity>=9.0",
     "typer>=0.12",          # ingestion CLI (backfill, replay, rejects-report)
+    "pyyaml>=6.0",          # declared source schemas
+    "psycopg[binary]>=3.2", # audit ledger writes (raw SQL, no ORM coupling)
 ]
 
 [project.optional-dependencies]
@@ -30,6 +32,10 @@ generators = [
     "numpy>=2.1",
     "pandas>=2.2",          # synthetic retailer generator only — pipeline code is arrow-native
 ]
+
+[project.scripts]
+# Operator entrypoint: `retailmind-etl run --day 2026-07-21`
+retailmind-etl = "ingestion.cli.main:app"
 
 [build-system]
 requires = ["hatchling"]

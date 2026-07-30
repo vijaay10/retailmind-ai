@@ -1,0 +1,133 @@
+# Declared contract for POS sales lines.
+#
+# This file drives parsing, missing-value policy, drift detection, and PII
+# governance for the source. Changing it is a reviewed pull request — that
+# review is the governance (ETL design §12).
+#
+# Bump `version` on every change; the fingerprint is derived from the column
+# set and is what the boundary check compares each arriving batch against.
+
+source: pos
+table: sales
+version: "1.0"
+
+natural_key: [order_id, line_no]
+event_time_column: transaction_ts
+timezone_column: store_timezone
+default_timezone: UTC
+
+# Latest wins when the same order line appears twice in a batch. Without a
+# tiebreaker, money-bearing duplicates would be rejected rather than guessed.
+dedupe_tiebreaker: updated_at
+
+columns:
+  # ── Business keys — a missing value makes the row unusable ──
+  - name: order_id
+    type: string
+    class: business_key
+    normalize: upper
+
+  - name: line_no
+    type: integer
+    class: business_key
+
+  - name: sku
+    type: string
+    class: business_key
+    normalize: upper
+
+  - name: store_id
+    type: string
+    class: business_key
+    normalize: upper
+
+  # ── Event time — defines the grain and the business date ──
+  - name: transaction_ts
+    type: timestamp
+    class: event_time
+    formats:
+      - "%Y-%m-%d %H:%M:%S"
+      - "%Y-%m-%dT%H:%M:%S"
+      - "%Y-%m-%dT%H:%M:%S%z"
+    # Two-digit years and ambiguous d/m orderings are deliberately absent:
+    # a warehouse that guesses between March 4th and April 3rd is a warehouse
+    # nobody can audit.
+
+  - name: updated_at
+    type: timestamp
+    class: descriptor
+    required: false
+    formats:
+      - "%Y-%m-%d %H:%M:%S"
+      - "%Y-%m-%dT%H:%M:%S"
+
+  # ── Measures — never imputed; bounds screen corruption, not outliers ──
+  - name: quantity
+    type: decimal
+    class: measure
+    min: -10000     # returns are negative
+    max: 10000      # beyond this is a data fault, not a bulk order
+
+  - name: gross_amount
+    type: decimal
+    class: measure
+    currency_column: currency
+    min: -1000000
+    max: 1000000
+
+  - name: discount_amount
+    type: decimal
+    class: measure
+    required: false
+    currency_column: currency
+    min: 0
+    max: 1000000
+
+  - name: unit_price
+    type: decimal
+    class: measure
+    currency_column: currency
+    min: 0
+    max: 100000
+
+  # ── Dimensions — missing becomes a visible UNKNOWN member ──
+  - name: currency
+    type: string
+    class: dimension
+    normalize: upper
+    enum: [USD, EUR, GBP, CAD, MXN]
+
+  - name: channel
+    type: string
+    class: dimension
+    normalize: lower
+    enum: [store, ecom_web, ecom_app, marketplace]
+
+  - name: store_timezone
+    type: string
+    class: dimension
+    required: false
+
+  - name: promo_code
+    type: string
+    class: dimension
+    required: false
+    normalize: upper
+
+  # ── Descriptors — honest nulls; only the null rate is monitored ──
+  - name: cashier_id
+    type: string
+    class: descriptor
+    required: false
+
+  # ── PII — flagged here, masked in silver, never queryable via NLQ ──
+  - name: customer_email
+    type: string
+    class: descriptor
+    required: false
+    pii: true
+
+metadata:
+  owner: data-platform
+  sla: "files complete by 02:30 tenant-local"
+  expected_units: 120
