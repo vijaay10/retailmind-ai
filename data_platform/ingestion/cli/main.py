@@ -25,6 +25,7 @@ from ingestion.core.duck import connect
 from ingestion.core.logging import configure_logging
 from ingestion.domain.schema import SourceSchema
 from ingestion.domain.window import Window
+from ingestion.generators.pos_files import generate_day
 from ingestion.landing.writer import committed_partitions
 from ingestion.pipeline import IngestionPipeline, RunSummary
 
@@ -70,6 +71,33 @@ def _report(summary: RunSummary) -> None:
         marker = {"loaded": "✓", "quarantined": "✗", "skipped": "·", "empty": "·"}[outcome.status]
         detail = f" [{', '.join(outcome.failed_rules)}]" if outcome.failed_rules else ""
         typer.echo(f"  {marker} {outcome.partition} {outcome.status}{detail}")
+
+
+@app.command()
+def generate(
+    day: Annotated[str | None, typer.Option(help="Business date; default yesterday")] = None,
+    stores: Annotated[int, typer.Option(help="How many per-store files to write")] = 120,
+    seed: Annotated[int, typer.Option(help="Deterministic generation seed")] = 7,
+) -> None:
+    """Write synthetic POS drops into the inbox (dev/demo only).
+
+    Deterministic for a given seed, and deliberately imperfect: a couple of
+    unusable rows and a re-sent line are planted so the reject and dedup paths
+    are exercised on every run.
+    """
+    configure_logging("INFO", json_output=False)
+    settings = EtlSettings()
+    business_date = date.fromisoformat(day) if day else date.today() - timedelta(days=1)
+
+    batch = generate_day(settings.inbox_dir("pos"), business_date, stores=stores, seed=seed)
+    typer.echo(
+        f"wrote {batch.rows:,} rows across {len(batch.files)} files "
+        f"into {settings.inbox_dir('pos')}"
+    )
+    typer.echo(
+        f"  planted: {batch.planted_rejects} unusable rows, "
+        f"{batch.planted_duplicates} duplicate line(s)"
+    )
 
 
 @app.command()
