@@ -23,7 +23,10 @@ models:
       core:                    # dim_* / fct_* — gold
         +schema: analytics
         +materialized: table   # incremental per-model where volume demands (ETL §6)
-        +contract: {enforced: true}
+        # Contract enforcement (locked column names/types) lands with the
+        # column specs in schema.yml — see docs/database. Enabling it before
+        # the specs exist would only fail the build with a less useful message.
+        +on_schema_change: fail
       metrics:                 # mart_* — derived, disposable
         +schema: analytics
         +materialized: table

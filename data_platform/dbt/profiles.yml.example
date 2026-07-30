@@ -6,7 +6,8 @@ retailmind:
       type: duckdb
       path: "{{ env_var('RM_WAREHOUSE_DUCKDB_PATH', '../.local/retailmind.duckdb') }}"
       schema: analytics
-      threads: 4
+      # DuckDB is single-writer: parallel builds race on the table swap.
+      threads: 1
     # snowflake:            # cloud profile — activated in S8 (DevOps §23)
     #   type: snowflake
     #   account: "{{ env_var('RM_WAREHOUSE_SNOWFLAKE_ACCOUNT') }}"

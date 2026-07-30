@@ -67,3 +67,4 @@ ml/notebooks/**/*.ipynb_checkpoints/
 *.log
 tmp/
 .local/
+data_platform/dbt/profiles.yml

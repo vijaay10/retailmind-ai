@@ -1,0 +1,147 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: >
+      Gregorian and NRF 4-5-4 retail calendar. Type 0 — dates never change.
+      The fiscal columns are what make week-over-week and year-over-year
+      comparisons honest: retail compares fiscal week to fiscal week so the
+      weekday mix stays constant.
+    columns:
+      - name: date_key
+        description: Surrogate key as yyyymmdd — readable, sortable, stable.
+        data_tests: [unique, not_null]
+      - name: full_date
+        data_tests: [unique, not_null]
+      - name: fiscal_year
+        data_tests: [not_null]
+      - name: fiscal_week
+        description: 1–52, or 1–53 in leap-week years.
+        data_tests:
+          - not_null
+          - accepted_range:
+              min_value: 1
+              max_value: 53
+      - name: fiscal_period
+        description: 1–12, following the 4-5-4 split within each quarter.
+        data_tests:
+          - not_null
+          - accepted_range:
+              min_value: 1
+              max_value: 12
+      - name: fiscal_quarter
+        data_tests:
+          - not_null
+          - accepted_values: {values: [1, 2, 3, 4], quote: false}
+      - name: same_fiscal_week_last_year
+        description: >
+          The fiscally-aligned date one year earlier (364 days). The column
+          every YoY comparison joins on.
+        data_tests: [not_null]
+
+  - name: dim_product
+    description: >
+      SCD2 product dimension — one row per SKU version. Facts point at the
+      version valid at transaction time, so historical attribution never
+      rewrites itself when a product is recategorized.
+    columns:
+      - name: product_key
+        description: Deterministic hash of (sku, valid_from).
+        data_tests: [unique, not_null]
+      - name: sku
+        data_tests: [not_null]
+      - name: category
+        data_tests: [not_null]
+      - name: is_current
+        data_tests: [not_null]
+      - name: status
+        data_tests:
+          - accepted_values:
+              values: [active, seasonal, discontinued, unknown]
+    data_tests:
+      - unique_combination:
+          combination_of_columns: [sku, valid_from]
+      - scd2_no_overlapping_versions:
+          entity_column: sku
+      - scd2_exactly_one_current:
+          entity_column: sku
+
+  - name: dim_store
+    description: >
+      SCD2 store dimension. Carries the attributes that decide a store's
+      comparison peer group — ranking a flagship against an outlet is
+      analytical malpractice, so cluster is defined here once.
+    columns:
+      - name: store_key
+        data_tests: [unique, not_null]
+      - name: store_id
+        data_tests: [not_null]
+      - name: region
+        data_tests: [not_null]
+      - name: store_cluster
+        description: format/size peer group used for all store ranking.
+        data_tests: [not_null]
+      - name: is_comp_eligible
+        description: True after 53 weeks of trading (like-for-like rule).
+        data_tests: [not_null]
+    data_tests:
+      - unique_combination:
+          combination_of_columns: [store_id, valid_from]
+      - scd2_no_overlapping_versions:
+          entity_column: store_id
+      - scd2_exactly_one_current:
+          entity_column: store_id
+
+  - name: dim_channel
+    description: Type 0 channel dimension.
+    columns:
+      - name: channel_key
+        data_tests: [unique, not_null]
+      - name: channel_code
+        data_tests: [unique, not_null]
+
+  - name: fct_sales
+    description: >
+      Order-line grain sales fact. All measures fully additive; returns are
+      negative-quantity rows so net revenue nets them without a filter.
+      Incremental over a 35-day window with delete+insert, which is what makes
+      re-runs, late re-lands, and backfills the same safe operation.
+    columns:
+      - name: sales_key
+        description: Deterministic hash of (order_id, line_no) — the grain.
+        data_tests: [unique, not_null]
+      - name: date_key
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: product_key
+        description: As-was product version; -1 when unresolvable.
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_product')
+              field: product_key
+      - name: store_key
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_store')
+              field: store_key
+      - name: channel_key
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_channel')
+              field: channel_key
+      - name: net_amount
+        description: gross minus discount; the revenue every consumer reads.
+        data_tests: [not_null]
+      - name: quantity
+        data_tests: [not_null]
+      - name: business_date
+        data_tests: [not_null]
+    data_tests:
+      - unique_combination:
+          combination_of_columns: [order_id, line_no]

@@ -1,0 +1,5 @@
+channel_code,channel_name,channel_group,is_digital
+store,Retail Store,Physical,false
+ecom_web,E-commerce Web,Digital,true
+ecom_app,E-commerce App,Digital,true
+marketplace,Marketplace,Digital,true

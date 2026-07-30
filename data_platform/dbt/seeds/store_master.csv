@@ -1,0 +1,121 @@
+store_id,store_name,city,district,region,store_format,sqft_band,timezone,opened_date
+S2001,Phoenix Standard,Phoenix,SW-2,Southwest,standard,8-20k,America/Chicago,2024-09-01
+S2002,Boston Outlet,Boston,NE-1,Northeast,outlet,<8k,America/New_York,2024-08-01
+S2003,Chicago Flagship,Chicago,MW-2,Midwest,flagship,20k+,America/Chicago,2016-03-01
+S2004,Seattle Standard,Seattle,WE-1,West,standard,8-20k,America/Los_Angeles,2025-11-01
+S2005,Atlanta Outlet,Atlanta,SE-2,Southeast,outlet,<8k,America/New_York,2015-02-01
+S2006,Tucson Flagship,Tucson,SW-1,Southwest,flagship,20k+,America/Chicago,2024-05-01
+S2007,New York Standard,New York,NE-2,Northeast,standard,8-20k,America/New_York,2014-02-01
+S2008,Detroit Outlet,Detroit,MW-1,Midwest,outlet,<8k,America/Chicago,2011-10-01
+S2009,Portland Flagship,Portland,WE-2,West,flagship,20k+,America/Los_Angeles,2022-08-01
+S2010,Miami Standard,Miami,SE-1,Southeast,standard,8-20k,America/New_York,2015-10-01
+S2011,Mesa Outlet,Mesa,SW-2,Southwest,outlet,<8k,America/Chicago,2010-09-01
+S2012,Philadelphia Flagship,Philadelphia,NE-1,Northeast,flagship,20k+,America/New_York,2012-01-01
+S2013,Minneapolis Standard,Minneapolis,MW-2,Midwest,standard,8-20k,America/Chicago,2011-04-01
+S2014,San Francisco Outlet,San Francisco,WE-1,West,outlet,<8k,America/Los_Angeles,2017-10-01
+S2015,Charlotte Flagship,Charlotte,SE-2,Southeast,flagship,20k+,America/New_York,2010-08-01
+S2016,Austin Standard,Austin,SW-1,Southwest,standard,8-20k,America/Chicago,2020-08-01
+S2017,Hartford Outlet,Hartford,NE-2,Northeast,outlet,<8k,America/New_York,2016-09-01
+S2018,Columbus Flagship,Columbus,MW-1,Midwest,flagship,20k+,America/Chicago,2017-11-01
+S2019,Sacramento Standard,Sacramento,WE-2,West,standard,8-20k,America/Los_Angeles,2019-08-01
+S2020,Nashville Outlet,Nashville,SE-1,Southeast,outlet,<8k,America/New_York,2010-11-01
+S2021,San Antonio Flagship,San Antonio,SW-2,Southwest,flagship,20k+,America/Chicago,2012-08-01
+S2022,Providence Standard,Providence,NE-1,Northeast,standard,8-20k,America/New_York,2018-07-01
+S2023,Indianapolis Outlet,Indianapolis,MW-2,Midwest,outlet,<8k,America/Chicago,2012-12-01
+S2024,Denver Flagship,Denver,WE-1,West,flagship,20k+,America/Los_Angeles,2018-06-01
+S2025,Orlando Standard,Orlando,SE-2,Southeast,standard,8-20k,America/New_York,2017-09-01
+S2026,El Paso Outlet,El Paso,SW-1,Southwest,outlet,<8k,America/Chicago,2019-01-01
+S2027,Newark Flagship,Newark,NE-2,Northeast,flagship,20k+,America/New_York,2012-10-01
+S2028,Milwaukee Standard,Milwaukee,MW-1,Midwest,standard,8-20k,America/Chicago,2013-07-01
+S2029,Boise Outlet,Boise,WE-2,West,outlet,<8k,America/Los_Angeles,2013-05-01
+S2030,Raleigh Flagship,Raleigh,SE-1,Southeast,flagship,20k+,America/New_York,2022-02-01
+S2031,Albuquerque Standard,Albuquerque,SW-2,Southwest,standard,8-20k,America/Chicago,2010-11-01
+S2032,Pittsburgh Outlet,Pittsburgh,NE-1,Northeast,outlet,<8k,America/New_York,2010-04-01
+S2033,St Louis Flagship,St Louis,MW-2,Midwest,flagship,20k+,America/Chicago,2016-01-01
+S2034,Salt Lake City Standard,Salt Lake City,WE-1,West,standard,8-20k,America/Los_Angeles,2025-07-01
+S2035,Tampa Outlet,Tampa,SE-2,Southeast,outlet,<8k,America/New_York,2022-07-01
+S2036,Las Vegas Flagship,Las Vegas,SW-1,Southwest,flagship,20k+,America/Chicago,2012-10-01
+S2037,Buffalo Standard,Buffalo,NE-2,Northeast,standard,8-20k,America/New_York,2016-11-01
+S2038,Kansas City Outlet,Kansas City,MW-1,Midwest,outlet,<8k,America/Chicago,2018-06-01
+S2039,Reno Flagship,Reno,WE-2,West,flagship,20k+,America/Los_Angeles,2012-05-01
+S2040,Birmingham Standard,Birmingham,SE-1,Southeast,standard,8-20k,America/New_York,2020-01-01
+S2041,Phoenix Outlet,Phoenix,SW-2,Southwest,outlet,<8k,America/Chicago,2023-02-01
+S2042,Boston Flagship,Boston,NE-1,Northeast,flagship,20k+,America/New_York,2014-04-01
+S2043,Chicago Standard,Chicago,MW-2,Midwest,standard,8-20k,America/Chicago,2013-01-01
+S2044,Seattle Outlet,Seattle,WE-1,West,outlet,<8k,America/Los_Angeles,2011-08-01
+S2045,Atlanta Flagship,Atlanta,SE-2,Southeast,flagship,20k+,America/New_York,2025-03-01
+S2046,Tucson Standard,Tucson,SW-1,Southwest,standard,8-20k,America/Chicago,2016-08-01
+S2047,New York Outlet,New York,NE-2,Northeast,outlet,<8k,America/New_York,2016-12-01
+S2048,Detroit Flagship,Detroit,MW-1,Midwest,flagship,20k+,America/Chicago,2014-07-01
+S2049,Portland Standard,Portland,WE-2,West,standard,8-20k,America/Los_Angeles,2022-02-01
+S2050,Miami Outlet,Miami,SE-1,Southeast,outlet,<8k,America/New_York,2022-07-01
+S2051,Mesa Flagship,Mesa,SW-2,Southwest,flagship,20k+,America/Chicago,2016-01-01
+S2052,Philadelphia Standard,Philadelphia,NE-1,Northeast,standard,8-20k,America/New_York,2018-10-01
+S2053,Minneapolis Outlet,Minneapolis,MW-2,Midwest,outlet,<8k,America/Chicago,2019-01-01
+S2054,San Francisco Flagship,San Francisco,WE-1,West,flagship,20k+,America/Los_Angeles,2016-03-01
+S2055,Charlotte Standard,Charlotte,SE-2,Southeast,standard,8-20k,America/New_York,2022-10-01
+S2056,Austin Outlet,Austin,SW-1,Southwest,outlet,<8k,America/Chicago,2013-01-01
+S2057,Hartford Flagship,Hartford,NE-2,Northeast,flagship,20k+,America/New_York,2014-04-01
+S2058,Columbus Standard,Columbus,MW-1,Midwest,standard,8-20k,America/Chicago,2024-05-01
+S2059,Sacramento Outlet,Sacramento,WE-2,West,outlet,<8k,America/Los_Angeles,2010-10-01
+S2060,Nashville Flagship,Nashville,SE-1,Southeast,flagship,20k+,America/New_York,2020-05-01
+S2061,San Antonio Standard,San Antonio,SW-2,Southwest,standard,8-20k,America/Chicago,2022-02-01
+S2062,Providence Outlet,Providence,NE-1,Northeast,outlet,<8k,America/New_York,2012-02-01
+S2063,Indianapolis Flagship,Indianapolis,MW-2,Midwest,flagship,20k+,America/Chicago,2016-10-01
+S2064,Denver Standard,Denver,WE-1,West,standard,8-20k,America/Los_Angeles,2017-01-01
+S2065,Orlando Outlet,Orlando,SE-2,Southeast,outlet,<8k,America/New_York,2021-06-01
+S2066,El Paso Flagship,El Paso,SW-1,Southwest,flagship,20k+,America/Chicago,2024-03-01
+S2067,Newark Standard,Newark,NE-2,Northeast,standard,8-20k,America/New_York,2025-10-01
+S2068,Milwaukee Outlet,Milwaukee,MW-1,Midwest,outlet,<8k,America/Chicago,2014-07-01
+S2069,Boise Flagship,Boise,WE-2,West,flagship,20k+,America/Los_Angeles,2015-11-01
+S2070,Raleigh Standard,Raleigh,SE-1,Southeast,standard,8-20k,America/New_York,2014-05-01
+S2071,Albuquerque Outlet,Albuquerque,SW-2,Southwest,outlet,<8k,America/Chicago,2017-10-01
+S2072,Pittsburgh Flagship,Pittsburgh,NE-1,Northeast,flagship,20k+,America/New_York,2017-12-01
+S2073,St Louis Standard,St Louis,MW-2,Midwest,standard,8-20k,America/Chicago,2016-03-01
+S2074,Salt Lake City Outlet,Salt Lake City,WE-1,West,outlet,<8k,America/Los_Angeles,2016-11-01
+S2075,Tampa Flagship,Tampa,SE-2,Southeast,flagship,20k+,America/New_York,2022-08-01
+S2076,Las Vegas Standard,Las Vegas,SW-1,Southwest,standard,8-20k,America/Chicago,2012-07-01
+S2077,Buffalo Outlet,Buffalo,NE-2,Northeast,outlet,<8k,America/New_York,2011-02-01
+S2078,Kansas City Flagship,Kansas City,MW-1,Midwest,flagship,20k+,America/Chicago,2013-01-01
+S2079,Reno Standard,Reno,WE-2,West,standard,8-20k,America/Los_Angeles,2018-04-01
+S2080,Birmingham Outlet,Birmingham,SE-1,Southeast,outlet,<8k,America/New_York,2022-05-01
+S2081,Phoenix Flagship,Phoenix,SW-2,Southwest,flagship,20k+,America/Chicago,2023-10-01
+S2082,Boston Standard,Boston,NE-1,Northeast,standard,8-20k,America/New_York,2025-05-01
+S2083,Chicago Outlet,Chicago,MW-2,Midwest,outlet,<8k,America/Chicago,2015-12-01
+S2084,Seattle Flagship,Seattle,WE-1,West,flagship,20k+,America/Los_Angeles,2012-03-01
+S2085,Atlanta Standard,Atlanta,SE-2,Southeast,standard,8-20k,America/New_York,2017-08-01
+S2086,Tucson Outlet,Tucson,SW-1,Southwest,outlet,<8k,America/Chicago,2012-05-01
+S2087,New York Flagship,New York,NE-2,Northeast,flagship,20k+,America/New_York,2016-04-01
+S2088,Detroit Standard,Detroit,MW-1,Midwest,standard,8-20k,America/Chicago,2010-02-01
+S2089,Portland Outlet,Portland,WE-2,West,outlet,<8k,America/Los_Angeles,2018-07-01
+S2090,Miami Flagship,Miami,SE-1,Southeast,flagship,20k+,America/New_York,2024-04-01
+S2091,Mesa Standard,Mesa,SW-2,Southwest,standard,8-20k,America/Chicago,2011-01-01
+S2092,Philadelphia Outlet,Philadelphia,NE-1,Northeast,outlet,<8k,America/New_York,2015-05-01
+S2093,Minneapolis Flagship,Minneapolis,MW-2,Midwest,flagship,20k+,America/Chicago,2021-09-01
+S2094,San Francisco Standard,San Francisco,WE-1,West,standard,8-20k,America/Los_Angeles,2014-02-01
+S2095,Charlotte Outlet,Charlotte,SE-2,Southeast,outlet,<8k,America/New_York,2021-03-01
+S2096,Austin Flagship,Austin,SW-1,Southwest,flagship,20k+,America/Chicago,2024-06-01
+S2097,Hartford Standard,Hartford,NE-2,Northeast,standard,8-20k,America/New_York,2014-10-01
+S2098,Columbus Outlet,Columbus,MW-1,Midwest,outlet,<8k,America/Chicago,2011-01-01
+S2099,Sacramento Flagship,Sacramento,WE-2,West,flagship,20k+,America/Los_Angeles,2025-06-01
+S2100,Nashville Standard,Nashville,SE-1,Southeast,standard,8-20k,America/New_York,2019-01-01
+S2101,San Antonio Outlet,San Antonio,SW-2,Southwest,outlet,<8k,America/Chicago,2010-10-01
+S2102,Providence Flagship,Providence,NE-1,Northeast,flagship,20k+,America/New_York,2012-08-01
+S2103,Indianapolis Standard,Indianapolis,MW-2,Midwest,standard,8-20k,America/Chicago,2012-12-01
+S2104,Denver Outlet,Denver,WE-1,West,outlet,<8k,America/Los_Angeles,2019-06-01
+S2105,Orlando Flagship,Orlando,SE-2,Southeast,flagship,20k+,America/New_York,2014-02-01
+S2106,El Paso Standard,El Paso,SW-1,Southwest,standard,8-20k,America/Chicago,2012-08-01
+S2107,Newark Outlet,Newark,NE-2,Northeast,outlet,<8k,America/New_York,2021-12-01
+S2108,Milwaukee Flagship,Milwaukee,MW-1,Midwest,flagship,20k+,America/Chicago,2011-12-01
+S2109,Boise Standard,Boise,WE-2,West,standard,8-20k,America/Los_Angeles,2014-06-01
+S2110,Raleigh Outlet,Raleigh,SE-1,Southeast,outlet,<8k,America/New_York,2021-02-01
+S2111,Albuquerque Flagship,Albuquerque,SW-2,Southwest,flagship,20k+,America/Chicago,2025-02-01
+S2112,Pittsburgh Standard,Pittsburgh,NE-1,Northeast,standard,8-20k,America/New_York,2023-01-01
+S2113,St Louis Outlet,St Louis,MW-2,Midwest,outlet,<8k,America/Chicago,2025-10-01
+S2114,Salt Lake City Flagship,Salt Lake City,WE-1,West,flagship,20k+,America/Los_Angeles,2010-10-01
+S2115,Tampa Standard,Tampa,SE-2,Southeast,standard,8-20k,America/New_York,2022-07-01
+S2116,Las Vegas Outlet,Las Vegas,SW-1,Southwest,outlet,<8k,America/Chicago,2010-10-01
+S2117,Buffalo Flagship,Buffalo,NE-2,Northeast,flagship,20k+,America/New_York,2012-02-01
+S2118,Kansas City Standard,Kansas City,MW-1,Midwest,standard,8-20k,America/Chicago,2012-11-01
+S2119,Reno Outlet,Reno,WE-2,West,outlet,<8k,America/Los_Angeles,2013-05-01
+S2120,Birmingham Flagship,Birmingham,SE-1,Southeast,flagship,20k+,America/New_York,2023-12-01

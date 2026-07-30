@@ -1,0 +1,41 @@
+sku,product_name,subcategory,category,department,brand,unit_cost,list_price,status
+OW-1000,Trail Shell Jacket,Shells,Outerwear,Apparel,Northpeak,42.00,129.00,active
+OW-1001,Alpine Down Parka,Insulated,Outerwear,Apparel,Northpeak,88.00,249.00,active
+OW-1002,Rainlite Anorak,Shells,Outerwear,Apparel,Meridian,31.00,89.00,active
+OW-1003,Fleece Midlayer,Midlayers,Outerwear,Apparel,Meridian,18.00,59.00,active
+OW-1004,Storm Hardshell,Shells,Outerwear,Apparel,Northpeak,64.00,189.00,active
+OW-1005,Quilted Vest,Insulated,Outerwear,Apparel,Harbourline,26.00,79.00,active
+OW-1006,Trail Windbreaker,Shells,Outerwear,Apparel,Meridian,22.00,69.00,active
+OW-1007,Summit Down Jacket,Insulated,Outerwear,Apparel,Northpeak,95.00,279.00,active
+OW-1008,Packable Rain Jacket,Shells,Outerwear,Apparel,Harbourline,19.00,55.00,seasonal
+OW-1009,Sherpa Pullover,Midlayers,Outerwear,Apparel,Harbourline,24.00,72.00,active
+AC-1010,Merino Beanie,Headwear,Accessories,Apparel,Harbourline,6.00,22.00,active
+AC-1011,Trail Gloves,Handwear,Accessories,Apparel,Northpeak,9.00,32.00,active
+AC-1012,Wool Scarf,Neckwear,Accessories,Apparel,Meridian,8.00,28.00,seasonal
+AC-1013,Packable Daypack,Bags,Accessories,Equipment,Northpeak,17.00,59.00,active
+AC-1014,Insulated Bottle,Drinkware,Accessories,Equipment,Harbourline,7.00,26.00,active
+AC-1015,Trekking Poles,Gear,Accessories,Equipment,Meridian,21.00,74.00,active
+AC-1016,Sun Cap,Headwear,Accessories,Apparel,Harbourline,5.00,19.00,active
+AC-1017,Liner Gloves,Handwear,Accessories,Apparel,Meridian,4.00,16.00,active
+AC-1018,Waist Pack,Bags,Accessories,Equipment,Northpeak,11.00,38.00,active
+AC-1019,Cable Beanie,Headwear,Accessories,Apparel,Northpeak,7.00,24.00,discontinued
+FW-1020,Ridge Hiking Boot,Boots,Footwear,Footwear,Northpeak,58.00,169.00,active
+FW-1021,Trail Runner,Runners,Footwear,Footwear,Meridian,41.00,119.00,active
+FW-1022,Approach Shoe,Runners,Footwear,Footwear,Northpeak,47.00,139.00,active
+FW-1023,Winter Boot,Boots,Footwear,Footwear,Harbourline,66.00,189.00,seasonal
+FW-1024,Camp Slipper,Casual,Footwear,Footwear,Harbourline,14.00,45.00,active
+FW-1025,Waterproof Hiker,Boots,Footwear,Footwear,Meridian,71.00,199.00,active
+FW-1026,Lightweight Sandal,Casual,Footwear,Footwear,Harbourline,12.00,39.00,seasonal
+FW-1027,Trail Sock 3-Pack,Socks,Footwear,Footwear,Meridian,6.00,22.00,active
+FW-1028,Insulated Bootie,Casual,Footwear,Footwear,Northpeak,18.00,52.00,active
+FW-1029,Approach Sandal,Casual,Footwear,Footwear,Northpeak,16.00,48.00,active
+BS-1030,Base Layer Top,Baselayers,Basics,Apparel,Harbourline,15.00,45.00,active
+BS-1031,Base Layer Bottom,Baselayers,Basics,Apparel,Harbourline,14.00,42.00,active
+BS-1032,Cotton Tee,Tops,Basics,Apparel,Meridian,5.00,19.00,active
+BS-1033,Performance Tee,Tops,Basics,Apparel,Northpeak,9.00,32.00,active
+BS-1034,Hiking Pant,Bottoms,Basics,Apparel,Northpeak,23.00,72.00,active
+BS-1035,Convertible Pant,Bottoms,Basics,Apparel,Meridian,27.00,84.00,active
+BS-1036,Thermal Legging,Baselayers,Basics,Apparel,Harbourline,17.00,52.00,seasonal
+BS-1037,Trail Short,Bottoms,Basics,Apparel,Meridian,13.00,42.00,seasonal
+BS-1038,Merino Longsleeve,Tops,Basics,Apparel,Northpeak,29.00,88.00,active
+BS-1039,Everyday Hoodie,Tops,Basics,Apparel,Harbourline,21.00,65.00,active

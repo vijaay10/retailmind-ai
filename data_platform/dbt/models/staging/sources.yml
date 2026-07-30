@@ -1,0 +1,34 @@
+version: 2
+
+sources:
+  - name: raw
+    description: >
+      Landing tables written by the ingestion pipeline. Already conformed
+      (typed, deduplicated, currency-standardized, business-dated) — the
+      warehouse's job starts from trustworthy input, not from raw text.
+    schema: raw
+    tables:
+      - name: pos__sales
+        description: POS sales lines, one row per order line per business date.
+        loaded_at_field: business_date
+        freshness:
+          # The nightly SLA is 06:00 tenant-local; a mart built on data older
+          # than a day should fail loudly rather than serve stale numbers.
+          warn_after: {count: 26, period: hour}
+          error_after: {count: 48, period: hour}
+        columns:
+          - name: order_id
+            description: Source order identifier (degenerate dimension).
+            data_tests: [not_null]
+          - name: line_no
+            data_tests: [not_null]
+          - name: sku
+            data_tests: [not_null]
+          - name: store_id
+            data_tests: [not_null]
+          - name: business_date
+            description: Local business date derived in the store's timezone.
+            data_tests: [not_null]
+          - name: gross_amount
+            description: Base-currency amount; source_currency retains the original.
+            data_tests: [not_null]

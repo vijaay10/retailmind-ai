@@ -50,7 +50,15 @@ HEADER = [
     "customer_email",
 ]
 
-CATEGORIES = ["OW", "AC", "FW", "BS"]  # outerwear, accessories, footwear, basics
+# SKUs must exist in the product master the warehouse dimensions are built
+# from — inventing them would resolve every sale to the UNKNOWN member and
+# make the orphan test (correctly) fail.
+CATALOG_SKUS = (
+    [f"OW-{1000 + i}" for i in range(10)]
+    + [f"AC-{1010 + i}" for i in range(10)]
+    + [f"FW-{1020 + i}" for i in range(10)]
+    + [f"BS-{1030 + i}" for i in range(10)]
+)
 CHANNELS = ["store", "ecom_web"]
 
 
@@ -139,7 +147,7 @@ def _sale_row(rng: random.Random, store_id: str, day: date, line: int) -> dict[s
     return {
         "order_id": f"POS-{store_id}-{line:04d}",
         "line_no": "1",
-        "sku": f"{rng.choice(CATEGORIES)}-{1000 + line % 40}",
+        "sku": rng.choice(CATALOG_SKUS),
         "store_id": store_id,
         "transaction_ts": timestamp,
         "updated_at": timestamp,

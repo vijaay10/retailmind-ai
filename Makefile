@@ -52,17 +52,25 @@ test-integration: ## Integration tests (needs Docker)
 	uv run pytest backend/tests/integration data_platform/tests/integration -q
 
 # ── Data platform ─────────────────────────────────────────────────────
-.PHONY: seed
-seed: ## Generate + land the synthetic retailer (Northwind Threads)
-	@echo "TODO(S1): data_platform/ingestion/generators entrypoint"
-
 .PHONY: backfill
-backfill: ## Backfill a window: make backfill START=2026-06-01 END=2026-06-15 SOURCES=pos
-	@echo "TODO(S2): data_platform/ingestion/cli backfill $(START) $(END) $(SOURCES)"
+backfill: ## Backfill a window: make backfill START=2026-06-01 END=2026-06-22
+	uv run python -m ingestion.cli backfill $(START) $(END)
 
-.PHONY: dbt-build
-dbt-build: ## dbt build against local DuckDB profile
-	@echo "TODO(S2): cd data_platform/dbt && dbt build --profiles-dir ."
+.PHONY: etl-demo
+etl-demo: ## Generate synthetic POS files and ingest them
+	uv run python -m ingestion.cli generate --day 2026-07-21
+	uv run python -m ingestion.cli run --day 2026-07-21
+
+.PHONY: warehouse
+warehouse: ## Build the dimensional warehouse (seeds, snapshots, models, tests)
+	cd data_platform/dbt && uv run dbt seed --profiles-dir .
+	cd data_platform/dbt && uv run dbt snapshot --profiles-dir .
+	cd data_platform/dbt && uv run dbt build --profiles-dir .
+
+.PHONY: warehouse-docs
+warehouse-docs: ## Generate and serve the dbt documentation site
+	cd data_platform/dbt && uv run dbt docs generate --profiles-dir .
+	cd data_platform/dbt && uv run dbt docs serve --profiles-dir .
 
 # ── Backend ───────────────────────────────────────────────────────────
 .PHONY: migrate
