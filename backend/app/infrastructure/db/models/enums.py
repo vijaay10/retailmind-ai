@@ -8,12 +8,6 @@ is a plain migration, not type surgery. Every enum here pairs with a
 from enum import StrEnum
 
 
-class RoleKey(StrEnum):
-    ADMIN = "admin"
-    ANALYST = "analyst"
-    VIEWER = "viewer"
-
-
 class UserStatus(StrEnum):
     ACTIVE = "active"
     INVITED = "invited"

@@ -5,6 +5,8 @@ settings, *_FILE secret variants, fail-fast missing-settings table) lands in S1
 per Backend design §16 / DevOps design §3.
 """
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +22,52 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     base_url: str = "http://localhost:8080"
     version: str = "local"
+
+
+class AuthSettings(BaseSettings):
+    """RM_AUTH_* — token lifetimes, signing keys, cookie behaviour.
+
+    Secrets follow the ``*_FILE`` convention (DevOps §4): the platform mounts
+    the key and we read it, so the value never appears in process env or logs.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="RM_AUTH_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    jwt_iss: str = "retailmind"
+    jwt_aud: str = "retailmind-app"
+    access_ttl_minutes: int = 15
+    refresh_ttl_days: int = 14
+
+    jwt_private_key_pem: str | None = None
+    jwt_private_key_file: str | None = None
+
+    # Refresh cookie: httpOnly + SameSite=Strict always; Secure everywhere but
+    # local http development, where the browser would otherwise drop it.
+    refresh_cookie_name: str = "rm_refresh"
+    refresh_cookie_path: str = "/api/v1/auth"
+    # None → derived from the environment in model_post_init. Browsers refuse
+    # to send Secure cookies over plain http, so local development would have
+    # no working session at all if this were unconditionally True.
+    cookie_secure: bool | None = None
+
+    @property
+    def require_configured_keys(self) -> bool:
+        """Ephemeral dev keys are tolerated only outside staging/production."""
+        return Settings().env in {"staging", "prod"}
+
+    def model_post_init(self, __context: object) -> None:
+        """Resolve ``*_FILE`` indirection and environment-derived defaults."""
+        if self.jwt_private_key_pem is None and self.jwt_private_key_file:
+            self.jwt_private_key_pem = Path(self.jwt_private_key_file).read_text()
+        if self.cookie_secure is None:
+            # Secure everywhere the app is actually served over TLS; explicit
+            # RM_AUTH_COOKIE_SECURE always wins over this default.
+            self.cookie_secure = Settings().env != "dev"
 
 
 class DatabaseSettings(BaseSettings):

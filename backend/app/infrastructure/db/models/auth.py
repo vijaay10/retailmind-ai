@@ -7,6 +7,7 @@ from sqlalchemy import BigInteger, ForeignKey, Index, SmallInteger, UniqueConstr
 from sqlalchemy.dialects.postgresql import CITEXT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.domain.auth.permissions import RoleKey  # single source for the role catalog
 from app.infrastructure.db.models.base import (
     Base,
     JSONDict,
@@ -14,7 +15,7 @@ from app.infrastructure.db.models.base import (
     enum_check,
     uuid_pk,
 )
-from app.infrastructure.db.models.enums import RoleKey, UserStatus
+from app.infrastructure.db.models.enums import UserStatus
 
 
 class Tenant(Base, TimestampMixin):

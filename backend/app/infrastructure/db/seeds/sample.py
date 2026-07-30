@@ -58,11 +58,24 @@ METRICS: list[dict[str, Any]] = [
     {"metric_key": "stockout_rate_pct", "display_name": "Stockout Rate", "sensitivity": "high"},
 ]
 
+# One user per role — the demo doubles as a live authorization matrix: sign in
+# as any of them to see exactly which surfaces that role opens.
 USERS: list[dict[str, Any]] = [
     {"email": "sam@northwind.example", "display_name": "Sam Okafor", "role_key": "admin"},
-    {"email": "marcus@northwind.example", "display_name": "Marcus Webb", "role_key": "analyst"},
-    {"email": "aisha@northwind.example", "display_name": "Aisha Rahman", "role_key": "analyst"},
-    {"email": "priya@northwind.example", "display_name": "Priya Sharma", "role_key": "viewer"},
+    {"email": "priya@northwind.example", "display_name": "Priya Sharma", "role_key": "ceo"},
+    {
+        "email": "diego@northwind.example",
+        "display_name": "Diego Alvarez",
+        "role_key": "regional_manager",
+    },
+    {
+        "email": "lena@northwind.example",
+        "display_name": "Lena Fischer",
+        "role_key": "store_manager",
+    },
+    {"email": "marcus@northwind.example", "display_name": "Marcus Webb", "role_key": "marketing"},
+    {"email": "aisha@northwind.example", "display_name": "Aisha Rahman", "role_key": "inventory"},
+    {"email": "yusuf@northwind.example", "display_name": "Yusuf Demir", "role_key": "finance"},
 ]
 
 

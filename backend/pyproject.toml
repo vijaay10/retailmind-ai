@@ -8,7 +8,7 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     # Data & validation
-    "pydantic>=2.9",
+    "pydantic[email]>=2.9",
     "pydantic-settings>=2.5",
     # Persistence
     "sqlalchemy[asyncio]>=2.0.35",
