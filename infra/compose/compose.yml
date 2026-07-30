@@ -1,0 +1,107 @@
+# RetailMind AI — core stack (DevOps design §2).
+# Layer with compose.demo.yml / compose.dev.yml; never edit this file for
+# env-specific tweaks — that's what the overlays are for.
+name: retailmind
+
+networks:
+  edge:
+  app:
+
+volumes:
+  pg_data:
+  redis_state_data:
+  minio_data:
+  duckdb_data:
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    command: ["api"]
+    env_file:
+      - path: ../../.env
+        required: false   # .env.example → .env is the dev setup step
+    networks: [edge, app]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      redis-state:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits: {memory: 512M, cpus: "1.0"}
+    ports:
+      - "8080:8000"   # TODO(S1): remove once the nginx edge service fronts the stack
+
+  # worker / beat / frontend / edge(nginx) / airflow services land in S1–S3
+  # (DevOps design §2 service inventory). Scaffold keeps the bootable core.
+
+  postgres:
+    image: postgres:16.4
+    environment:
+      POSTGRES_DB: retailmind_app
+      POSTGRES_USER: api_rw
+      POSTGRES_PASSWORD: dev-only-password   # dev; secrets per DevOps §4 in prod
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      # TODO(S1): initdb role scripts (infra/docker/postgres) per DB design §34
+    networks: [app]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U api_rw -d retailmind_app"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits: {memory: 1G, cpus: "1.0"}
+
+  redis-cache:   # volatile cache — LRU, no persistence (DevOps design §11)
+    image: redis:7.4-alpine
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru", "--save", ""]
+    networks: [app]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  redis-state:   # durable state — budgets/idempotency/rate-limits: noeviction + AOF
+    image: redis:7.4-alpine
+    command: ["redis-server", "--maxmemory-policy", "noeviction", "--appendonly", "yes"]
+    volumes:
+      - redis_state_data:/data
+    networks: [app]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: minioadmin        # dev only
+      MINIO_ROOT_PASSWORD: minioadmin    # dev only
+    volumes:
+      - minio_data:/data
+    networks: [app]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped

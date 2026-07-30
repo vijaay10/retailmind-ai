@@ -1,0 +1,17 @@
+name: ai-eval
+
+# Prompt/golden-set regression gates (AI design §0.5). Recorded fixtures on PR,
+# live-model eval nightly. TODO(S7/v0.5): activate with the LLM gateway.
+
+on:
+  pull_request:
+    paths: ["backend/app/infrastructure/llm/**"]
+  schedule:
+    - cron: "0 4 * * *"
+
+jobs:
+  golden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "TODO(v0.5) golden sets (recorded) + grounding validator suite + injection suite"

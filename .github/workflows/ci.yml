@@ -1,0 +1,40 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --all-packages
+      - run: uv run ruff check backend data_platform ml
+      - run: uv run ruff format --check backend data_platform ml
+      - run: uv run mypy backend/app
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --all-packages
+      - run: uv run pytest backend/tests/unit data_platform/tests/unit -q
+      # TODO(S1): integration job (testcontainers), paths-filtered per-package
+      # jobs, import-linter contracts, coverage gate ≥85% on domain/services
+
+  boundaries:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --all-packages
+      - run: cd backend && uv run lint-imports --config ../pyproject.toml
+        continue-on-error: true   # TODO(S1): enforce once module skeletons import each other

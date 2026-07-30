@@ -1,0 +1,43 @@
+# RetailMind AI warehouse — dbt project (DB design §4/§20, ETL design).
+name: retailmind
+version: "0.0.1"
+profile: retailmind
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+snapshot-paths: ["snapshots"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+analysis-paths: ["analyses"]
+target-path: "target"
+
+models:
+  retailmind:
+    staging:
+      +schema: staging
+      +materialized: view
+    intermediate:
+      +schema: staging
+      +materialized: ephemeral
+    marts:
+      core:                    # dim_* / fct_* — gold
+        +schema: analytics
+        +materialized: table   # incremental per-model where volume demands (ETL §6)
+        +contract: {enforced: true}
+      metrics:                 # mart_* — derived, disposable
+        +schema: analytics
+        +materialized: table
+      semantic:                # v_* — the only app-readable layer
+        +schema: semantic
+        +materialized: view
+
+snapshots:
+  retailmind:
+    +target_schema: staging    # SCD2 snapshots (DB design §8)
+
+seeds:
+  retailmind:
+    +schema: staging
+    # calendar_454.csv, holiday_calendar.csv, channel_map.csv land in S2
+
+# TODO(S2): on-run-end hooks → parse artifacts into META (ETL design §19)

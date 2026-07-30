@@ -1,0 +1,15 @@
+name: dbt-ci
+
+# Slim CI for the dbt project (ETL design §35): state:modified+ against an
+# ephemeral schema with row-count diffs. TODO(S2): activate when first models land.
+
+on:
+  pull_request:
+    paths: ["data_platform/dbt/**"]
+
+jobs:
+  dbt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "TODO(S2) dbt build --select state:modified+ (DuckDB CI profile)"

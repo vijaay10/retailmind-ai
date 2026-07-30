@@ -1,0 +1,68 @@
+# ── Python ────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# ── Node / frontend ───────────────────────────────────
+node_modules/
+frontend/.next/
+frontend/out/
+*.tsbuildinfo
+
+# ── Environment & secrets (never commit; gitleaks enforces) ──
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# ── Data (fixtures/seeds in-repo are the ONLY data in git) ──
+*.duckdb
+*.duckdb.wal
+data/
+bronze/
+*.parquet
+!data_platform/tests/fixtures/**/*.parquet
+!backend/tests/fixtures/**/*.parquet
+
+# ── dbt ───────────────────────────────────────────────
+data_platform/dbt/target/
+data_platform/dbt/dbt_packages/
+data_platform/dbt/logs/
+data_platform/dbt/profiles.yml
+
+# ── Airflow ───────────────────────────────────────────
+airflow.db
+airflow-webserver.pid
+data_platform/orchestration/logs/
+
+# ── ML artifacts (MLflow/S3 own binaries, git owns code) ──
+mlruns/
+*.pkl
+*.joblib
+ml/notebooks/**/*.ipynb_checkpoints/
+
+# ── Terraform ─────────────────────────────────────────
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+!*.tfvars.example
+
+# ── IDE / OS ──────────────────────────────────────────
+.idea/
+.vscode/
+.DS_Store
+
+# ── Logs & local scratch ──────────────────────────────
+*.log
+tmp/

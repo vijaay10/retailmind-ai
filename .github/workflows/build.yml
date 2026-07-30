@@ -1,0 +1,18 @@
+name: build
+
+# Image build + scan + SBOM + push (DevOps design §18).
+# TODO(S1): activate registry push (GHCR/ECR via OIDC — zero static keys),
+# Trivy gate, cosign signing, SBOM attach.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build api image (smoke — push comes in S1)
+        run: docker build -f infra/docker/api.Dockerfile -t retailmind/api:${{ github.sha }} .

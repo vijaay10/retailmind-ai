@@ -1,0 +1,13 @@
+# Copy to profiles.yml (gitignored). Same models, two targets (ARCH ADR-5).
+retailmind:
+  target: duckdb
+  outputs:
+    duckdb:
+      type: duckdb
+      path: "{{ env_var('RM_WAREHOUSE_DUCKDB_PATH', '../.local/retailmind.duckdb') }}"
+      schema: analytics
+      threads: 4
+    # snowflake:            # cloud profile — activated in S8 (DevOps §23)
+    #   type: snowflake
+    #   account: "{{ env_var('RM_WAREHOUSE_SNOWFLAKE_ACCOUNT') }}"
+    #   ...

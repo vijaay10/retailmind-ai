@@ -1,0 +1,7 @@
+# Demo overlay: synthetic retailer + one-shot pipeline cycle (PRD F-20).
+# Usage: docker compose -f compose.yml -f compose.demo.yml up
+services: {}
+# TODO(S1):
+#   seed-synthetic:  one-shot job — generator → bronze (MinIO)
+#   airflow:         standalone mode running ingest+transform once
+#   duckdb-init:     warehouse schema bootstrap
