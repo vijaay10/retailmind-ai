@@ -72,9 +72,7 @@ def warehouse(tmp_path_factory: pytest.TempPathFactory) -> Iterator[duckdb.DuckD
         reject_rate_threshold=0.10,
     )
 
-    pos_files.generate_day(
-        settings.inbox_dir("pos"), BUSINESS_DAY, stores=6, lines_per_store=25
-    )
+    pos_files.generate_day(settings.inbox_dir("pos"), BUSINESS_DAY, stores=6, lines_per_store=25)
     inventory_files.generate_day(
         settings.inbox_dir("inventory"), BUSINESS_DAY, stores=6, skus_per_store=20
     )

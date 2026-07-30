@@ -34,6 +34,9 @@ DOMAIN_PERMISSIONS: dict[str, Permission] = {
     "inventory": Permission.ANALYTICS_INVENTORY_READ,
     "marketing": Permission.ANALYTICS_MARKETING_READ,
     "profitability": Permission.ANALYTICS_PROFITABILITY_READ,
+    # Product performance rides with revenue: anyone who can see revenue
+    # can see which products produced it.
+    "product": Permission.ANALYTICS_REVENUE_READ,
 }
 
 DEFAULT_LOOKBACK_DAYS = 30

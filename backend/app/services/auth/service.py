@@ -288,10 +288,31 @@ class AuthService:
             user_id=user.id,
             tenant_id=user.tenant_id,
             email=user.email,
-            roles=frozenset(RoleKey(r.key) for r in user.roles),
+            roles=self._known_roles(user),
             token_version=user.token_version,
             jti=jti,
         )
+
+    def _known_roles(self, user: AppUser) -> frozenset[RoleKey]:
+        """Map stored role keys to the catalog, skipping any the code does not know.
+
+        A role row the application cannot interpret — a stale database, a
+        half-applied migration, a manually inserted row — must not make every
+        login for that user a 500. Skipping it degrades to *less* access, which
+        is the safe direction, and logs loudly so the mismatch gets fixed.
+        """
+        roles: set[RoleKey] = set()
+        for row in user.roles:
+            try:
+                roles.add(RoleKey(row.key))
+            except ValueError:
+                log.error(
+                    "auth.unknown_role",
+                    role_key=row.key,
+                    user_id=str(user.id),
+                    hint="database role catalog is ahead of or behind the code",
+                )
+        return frozenset(roles)
 
     async def _issue_pair(
         self, user: AppUser, *, family_id: uuid.UUID, generation: int

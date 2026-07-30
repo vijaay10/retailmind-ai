@@ -41,7 +41,11 @@ def _load(source: str, table: str) -> SourceSchema:
 
 
 def _build_pipeline(
-    schema: SourceSchema, settings: EtlSettings, *, dsn: str | None
+    schema: SourceSchema,
+    settings: EtlSettings,
+    *,
+    dsn: str | None,
+    expected_units: int | None = None,
 ) -> tuple[IngestionPipeline, DuckDBPyConnection]:
     settings.warehouse_path.parent.mkdir(parents=True, exist_ok=True)
     conn = connect(settings.warehouse_path)
@@ -49,7 +53,15 @@ def _build_pipeline(
         schema=schema,
         settings=settings,
         connection=conn,
-        expected_units=int(schema.metadata.get("expected_units", 0)),
+        # How many per-store files constitute a complete day is *tenant
+        # configuration*, not part of the source's data contract — a chain that
+        # opens stores changes this number without changing its schema. The
+        # schema value is the default; the caller may override it.
+        expected_units=(
+            expected_units
+            if expected_units is not None
+            else int(schema.metadata.get("expected_units", 0))
+        ),
     )
     pipeline = IngestionPipeline(
         connector=connector,
@@ -77,6 +89,7 @@ def _report(summary: RunSummary) -> None:
 @app.command()
 def generate(
     day: Annotated[str | None, typer.Option(help="Business date; default yesterday")] = None,
+    days: Annotated[int, typer.Option(help="Days of history ending at --day")] = 1,
     stores: Annotated[int, typer.Option(help="How many per-store files to write")] = 120,
     seed: Annotated[int, typer.Option(help="Deterministic generation seed")] = 7,
 ) -> None:
@@ -90,18 +103,25 @@ def generate(
     settings = EtlSettings()
     business_date = date.fromisoformat(day) if day else date.today() - timedelta(days=1)
 
-    batch = generate_day(settings.inbox_dir("pos"), business_date, stores=stores, seed=seed)
-    typer.echo(f"pos.sales:          {batch.rows:,} rows across {len(batch.files)} files")
-    typer.echo(
-        f"  planted: {batch.planted_rejects} unusable rows, "
-        f"{batch.planted_duplicates} duplicate line(s)"
-    )
+    # Each day carries its own seed offset, so the series varies day to day
+    # while staying reproducible for a given --seed. A flat series would make
+    # trends, growth, and forecasts meaningless to demo against.
+    sales_rows = sales_files = position_rows = 0
+    for offset in range(days):
+        current = business_date - timedelta(days=days - 1 - offset)
+        batch = generate_day(settings.inbox_dir("pos"), current, stores=stores, seed=seed + offset)
+        positions = inventory_files.generate_day(
+            settings.inbox_dir("inventory"), current, stores=stores, seed=seed + 600 + offset
+        )
+        sales_rows += batch.rows
+        sales_files += len(batch.files)
+        position_rows += positions.rows
 
-    positions = inventory_files.generate_day(
-        settings.inbox_dir("inventory"), business_date, stores=stores, seed=seed + 6
-    )
-    typer.echo(f"inventory.positions: {positions.rows:,} rows across {len(positions.files)} files")
-    typer.echo(f"  planted: {positions.planted_stockouts} stockout positions")
+    first_day = business_date - timedelta(days=days - 1)
+    span = business_date.isoformat() if days == 1 else f"{first_day} → {business_date}"
+    typer.echo(f"generated {span} ({days} day(s) x {stores} stores)")
+    typer.echo(f"  pos.sales:           {sales_rows:,} rows in {sales_files:,} files")
+    typer.echo(f"  inventory.positions: {position_rows:,} rows")
 
 
 @app.command()
@@ -112,6 +132,9 @@ def run(
         str | None, typer.Option(help="Business date (YYYY-MM-DD); default yesterday")
     ] = None,
     dsn: Annotated[str | None, typer.Option(help="Postgres DSN for the audit ledger")] = None,
+    expected_stores: Annotated[
+        int | None, typer.Option(help="Override the expected per-store file count")
+    ] = None,
     verbose: Annotated[bool, typer.Option(help="Human-readable logs")] = False,
 ) -> None:
     """Ingest one business date."""
@@ -119,7 +142,7 @@ def run(
     business_date = date.fromisoformat(day) if day else date.today() - timedelta(days=1)
 
     schema = _load(source, table)
-    pipeline, conn = _build_pipeline(schema, EtlSettings(), dsn=dsn)
+    pipeline, conn = _build_pipeline(schema, EtlSettings(), dsn=dsn, expected_units=expected_stores)
     try:
         summary = pipeline.run(
             Window.for_day(business_date), dag_run_id=f"cli__{datetime.now():%Y%m%dT%H%M%S}"
@@ -139,6 +162,9 @@ def backfill(
     source: Annotated[str, typer.Option()] = "pos",
     table: Annotated[str, typer.Option()] = "sales",
     dsn: Annotated[str | None, typer.Option()] = None,
+    expected_stores: Annotated[
+        int | None, typer.Option(help="Override the expected per-store file count")
+    ] = None,
 ) -> None:
     """Reprocess a historical window.
 
@@ -149,7 +175,7 @@ def backfill(
     window = Window(date.fromisoformat(start), date.fromisoformat(end))
 
     schema = _load(source, table)
-    pipeline, conn = _build_pipeline(schema, EtlSettings(), dsn=dsn)
+    pipeline, conn = _build_pipeline(schema, EtlSettings(), dsn=dsn, expected_units=expected_stores)
     try:
         summary = pipeline.run(window, dag_run_id=f"backfill__{start}_{end}")
     finally:

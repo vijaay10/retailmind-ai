@@ -49,25 +49,28 @@ _OLD_ROLES = [
 
 
 def upgrade() -> None:
-    # 1 — widen the CHECK first. Ordering matters: the constraint must accept
-    #     the new values before any row can carry them.
+    # Drop → remap → re-add, and the ordering is not cosmetic.
+    #
+    # The old and new key sets are *disjoint* for ids 2 and 3
+    # ('analyst'/'viewer' become 'regional_manager'/'ceo'), so no ordering
+    # works while a constraint is installed: the old one rejects the new
+    # values, the new one rejects the old. The rows must move while
+    # unconstrained, inside this migration's transaction, where no concurrent
+    # writer can observe the gap.
+    #
+    # Installing the new constraint first passes on an empty database and
+    # fails on one that already has rows — that is, never in CI and always in
+    # production.
     op.execute("ALTER TABLE role DROP CONSTRAINT IF EXISTS ck_role_key_valid")
-    op.execute(
-        """
-        ALTER TABLE role ADD CONSTRAINT ck_role_key_valid
-        CHECK (key IN ('admin', 'ceo', 'regional_manager', 'store_manager',
-                       'marketing', 'inventory', 'finance'))
-        """
-    )
 
-    # 2 — remap ids 2 and 3 in place; existing user_role rows follow the id and
+    # 1 — remap ids 2 and 3 in place; existing user_role rows follow the id and
     #     keep working without a rewrite.
     for role_id, key, description in _NEW_ROLES[:3]:
         op.execute(
             f"UPDATE role SET key = '{key}', description = '{description}' WHERE id = {role_id}"
         )
 
-    # 3 — add the four new functional roles.
+    # 2 — add the four new functional roles.
     for role_id, key, description in _NEW_ROLES[3:]:
         op.execute(
             f"""
@@ -77,6 +80,15 @@ def upgrade() -> None:
               SET key = EXCLUDED.key, description = EXCLUDED.description
             """
         )
+
+    # 3 — re-install the constraint now that every row satisfies it.
+    op.execute(
+        """
+        ALTER TABLE role ADD CONSTRAINT ck_role_key_valid
+        CHECK (key IN ('admin', 'ceo', 'regional_manager', 'store_manager',
+                       'marketing', 'inventory', 'finance'))
+        """
+    )
 
 
 def downgrade() -> None:

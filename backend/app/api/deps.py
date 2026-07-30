@@ -28,9 +28,14 @@ from app.infrastructure.db.repositories.auth import (
     RefreshTokenRepository,
     UserRepository,
 )
+from app.infrastructure.db.repositories.insights import (
+    AlertReadRepository,
+    RecommendationReadRepository,
+)
 from app.infrastructure.semantic.repository import AnalyticsRepository
 from app.services.analytics.service import AnalyticsService
 from app.services.auth.service import AuthService
+from app.services.dashboard.service import ExecutiveDashboardService
 from app.services.shared import authz
 from app.services.shared.uow import UnitOfWork
 
@@ -150,3 +155,25 @@ def get_analytics_service(request: Request) -> AnalyticsService:
 
 
 AnalyticsServiceDep = Annotated[AnalyticsService, Depends(get_analytics_service)]
+
+
+def get_dashboard_service(
+    request: Request,
+    session: SessionDep,
+    analytics: AnalyticsServiceDep,
+) -> ExecutiveDashboardService:
+    """Executive dashboard service.
+
+    Composes the analytics service (warehouse metrics) with OLTP read
+    repositories (alerts, recommendations) — the two estates meet here, in the
+    service layer, rather than in a query that spans them.
+    """
+    return ExecutiveDashboardService(
+        analytics=analytics,
+        semantic=request.app.state.semantic_client,
+        alerts=AlertReadRepository(session),
+        recommendations=RecommendationReadRepository(session),
+    )
+
+
+DashboardServiceDep = Annotated[ExecutiveDashboardService, Depends(get_dashboard_service)]

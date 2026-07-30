@@ -525,8 +525,84 @@ PROFITABILITY = Domain(
 )
 
 
+# ── Product (Analytics §5) ───────────────────────────────────────────
+
+PRODUCT = Domain(
+    key="product",
+    label="Product Analytics",
+    relation="v_fct_sales",
+    metrics={
+        "net_revenue": Metric(
+            "net_revenue",
+            "Net Revenue",
+            "sum(net_amount)",
+            Additivity.FULL,
+            "currency",
+            "Revenue attributed to the product.",
+        ),
+        "units_sold": Metric(
+            "units_sold", "Units Sold", "sum(quantity)", Additivity.FULL, "units", "Net units sold."
+        ),
+        "margin_amount": Metric(
+            "margin_amount",
+            "Margin",
+            "sum(margin_amount)",
+            Additivity.FULL,
+            "currency",
+            "Gross margin earned.",
+        ),
+        "orders": Metric(
+            "orders",
+            "Orders",
+            "count(distinct order_id)",
+            Additivity.NON,
+            "count",
+            "Distinct orders containing the product.",
+        ),
+        "margin_rate": Metric(
+            "margin_rate",
+            "Margin Rate",
+            "sum(margin_amount) / nullif(sum(net_amount), 0)",
+            Additivity.NON,
+            "rate",
+            "Margin share of revenue.",
+            ratio_of=("margin_amount", "net_revenue"),
+        ),
+        "asp": Metric(
+            "asp",
+            "Average Selling Price",
+            "sum(net_amount) / nullif(sum(quantity), 0)",
+            Additivity.NON,
+            "currency",
+            "Realised price per unit.",
+            ratio_of=("net_revenue", "units_sold"),
+        ),
+    },
+    dimensions=_dims(
+        ("sku", "SKU", "sku"),
+        ("product_name", "Product", "product_name"),
+        ("category", "Category", "category"),
+        ("subcategory", "Subcategory", "subcategory"),
+        ("department", "Department", "department"),
+        ("brand", "Brand", "brand"),
+        ("region", "Region", "region"),
+        ("channel", "Channel", "channel_code"),
+        ("business_date", "Date", "business_date"),
+    ),
+)
+
+
 DOMAINS: dict[str, Domain] = {
-    domain.key: domain for domain in (REVENUE, STORE, CUSTOMER, INVENTORY, MARKETING, PROFITABILITY)
+    domain.key: domain
+    for domain in (
+        REVENUE,
+        STORE,
+        CUSTOMER,
+        INVENTORY,
+        MARKETING,
+        PROFITABILITY,
+        PRODUCT,
+    )
 }
 
 

@@ -156,7 +156,10 @@ def _sale_row(rng: random.Random, store_id: str, day: date, line: int) -> dict[s
     quantity = rng.randint(1, 4)
 
     return {
-        "order_id": f"POS-{store_id}-{line:04d}",
+        # Date-qualified: order ids must be unique over time, or a
+        # multi-day load collides on the fact grain (one row per order
+        # line) and every measure inflates.
+        "order_id": f"POS-{store_id}-{day:%Y%m%d}-{line:04d}",
         "line_no": "1",
         "sku": rng.choice(CATALOG_SKUS),
         "store_id": store_id,
