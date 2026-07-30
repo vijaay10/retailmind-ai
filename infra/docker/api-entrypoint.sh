@@ -7,8 +7,7 @@ case "$1" in
     exec uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --proxy-headers
     ;;
   migrate)
-    echo "TODO(S1): exec alembic upgrade head"
-    exit 0
+    exec alembic -c /srv/alembic.ini upgrade head
     ;;
   worker)
     echo "TODO(S1): exec celery -A app.workers.celery_app worker"

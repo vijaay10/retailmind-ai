@@ -67,7 +67,19 @@ dbt-build: ## dbt build against local DuckDB profile
 # ── Backend ───────────────────────────────────────────────────────────
 .PHONY: migrate
 migrate: ## Apply database migrations
-	@echo "TODO(S1): alembic upgrade head (after alembic init in backend/app/infrastructure/db)"
+	cd backend && uv run alembic upgrade head
+
+.PHONY: migrate-sql
+migrate-sql: ## Print migration SQL for review without applying
+	cd backend && uv run alembic upgrade head --sql
+
+.PHONY: seed
+seed-db: ## Seed reference data (roles) — safe everywhere, idempotent
+	cd backend && uv run python -m app.infrastructure.db.seeds.reference
+
+.PHONY: seed-demo
+seed-demo: seed-db ## Seed the Northwind Threads demo tenant (refuses in prod)
+	cd backend && uv run python -m app.infrastructure.db.seeds.sample
 
 .PHONY: api
 api: ## Run the API locally (no Docker)

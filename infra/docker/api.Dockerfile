@@ -22,6 +22,7 @@ RUN groupadd -g 10001 app && useradd -u 10001 -g app -m app
 WORKDIR /srv
 COPY --from=builder --chown=app:app /build/.venv /srv/.venv
 COPY --chown=app:app backend/app /srv/app
+COPY --chown=app:app backend/alembic.ini /srv/alembic.ini
 COPY --chown=app:app infra/docker/api-entrypoint.sh /srv/entrypoint.sh
 RUN chmod +x /srv/entrypoint.sh
 

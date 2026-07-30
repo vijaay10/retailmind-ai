@@ -19,6 +19,7 @@ dev = [
     "pytest-cov>=5.0",
     "pre-commit>=3.8",
     "import-linter>=2.0",
+    "testcontainers>=4.8",
 ]
 
 # ── Shared tool configuration (single source for the whole monorepo) ──
