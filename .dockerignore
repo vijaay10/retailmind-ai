@@ -1,0 +1,17 @@
+# Keep build context small and secrets out of images (DevOps design §1).
+.git/
+.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/node_modules/
+frontend/.next/
+docs/
+infra/terraform/
+**/tests/
+**/*.duckdb
+**/target/          # dbt artifacts
+.env
+.env.*
+!.env.example

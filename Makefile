@@ -16,7 +16,7 @@ help: ## List available targets
 demo: ## Boot full stack + synthetic retailer (the recruiter path)
 	$(COMPOSE_DEMO) up -d --build
 	@echo "TODO(S1): seed synthetic retailer + run first DAG cycle"
-	@echo "→ app will be at http://localhost:8080 once services are healthy"
+	@echo "→ app will be at http://localhost:$${RM_API_PORT:-8090} once services are healthy"
 
 .PHONY: up
 up: ## Dev stack with hot reload

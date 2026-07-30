@@ -19,9 +19,20 @@ services:
       context: ../..
       dockerfile: infra/docker/api.Dockerfile
     command: ["api"]
+    # In-container service names. These are defaults, not overrides: values in
+    # .env win, so the stack works with zero setup but stays configurable.
+    environment:
+      RM_DB_HOST: ${RM_DB_HOST:-postgres}
+      RM_DB_PORT: ${RM_DB_PORT:-5432}
+      RM_DB_NAME: ${RM_DB_NAME:-retailmind_app}
+      RM_DB_USER: ${RM_DB_USER:-api_rw}
+      RM_DB_PASSWORD: ${RM_DB_PASSWORD:-dev-only-password}
+      RM_REDIS_CACHE_URL: ${RM_REDIS_CACHE_URL:-redis://redis-cache:6379/0}
+      RM_REDIS_STATE_URL: ${RM_REDIS_STATE_URL:-redis://redis-state:6379/0}
+      RM_S3_ENDPOINT: ${RM_S3_ENDPOINT:-http://minio:9000}
     env_file:
       - path: ../../.env
-        required: false   # .env.example → .env is the dev setup step
+        required: false   # .env.example → .env is optional; defaults above suffice
     networks: [edge, app]
     depends_on:
       postgres:
@@ -41,7 +52,9 @@ services:
       resources:
         limits: {memory: 512M, cpus: "1.0"}
     ports:
-      - "8080:8000"   # TODO(S1): remove once the nginx edge service fronts the stack
+      # Host port is overridable: RM_API_PORT=9000 make up
+      # (default 8090 — 8080 is a popular squat; TODO(S1): nginx edge fronts this)
+      - "${RM_API_PORT:-8090}:8000"
 
   # worker / beat / frontend / edge(nginx) / airflow services land in S1–S3
   # (DevOps design §2 service inventory). Scaffold keeps the bootable core.
