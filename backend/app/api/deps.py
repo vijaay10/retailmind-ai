@@ -28,6 +28,8 @@ from app.infrastructure.db.repositories.auth import (
     RefreshTokenRepository,
     UserRepository,
 )
+from app.infrastructure.semantic.repository import AnalyticsRepository
+from app.services.analytics.service import AnalyticsService
 from app.services.auth.service import AuthService
 from app.services.shared import authz
 from app.services.shared.uow import UnitOfWork
@@ -128,3 +130,23 @@ def requires(permission: Permission) -> Callable[[Principal], Principal]:
         return principal
 
     return _guard
+
+
+# ── Analytics ────────────────────────────────────────────────────────
+
+
+def get_analytics_service(request: Request) -> AnalyticsService:
+    """Analytics service over the process-wide semantic client and cache.
+
+    Both are singletons: the client holds no per-request state, and a
+    per-request cache connection would defeat the pool.
+    """
+    return AnalyticsService(
+        AnalyticsRepository(
+            client=request.app.state.semantic_client,
+            cache=request.app.state.analytics_cache,
+        )
+    )
+
+
+AnalyticsServiceDep = Annotated[AnalyticsService, Depends(get_analytics_service)]

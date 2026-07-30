@@ -123,6 +123,11 @@ def test_shipped_pos_schema_is_valid() -> None:
     assert schema.natural_key == ("order_id", "line_no")
     assert schema.dedupe_tiebreaker == "updated_at"
     assert "customer_email" in schema.pii_columns
+    # The pseudonymous loyalty id must NOT be PII-flagged — it is the join
+    # key customer analytics depends on.
+    assert "customer_id" not in schema.pii_columns
     # Money columns must all name their currency column, or FX cannot resolve.
     assert all(c.currency_column == "currency" for c in schema.columns if c.is_money)
-    assert yaml.safe_load(path.read_text())["version"] == "1.0"
+    # Version is bumped on every contract change; assert it is declared and
+    # parseable rather than pinning a literal that every change must chase.
+    assert str(yaml.safe_load(path.read_text())["version"]).count(".") == 1

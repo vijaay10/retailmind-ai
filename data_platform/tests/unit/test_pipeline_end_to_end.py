@@ -37,6 +37,7 @@ HEADER = [
     "channel",
     "store_timezone",
     "promo_code",
+    "customer_id",
     "cashier_id",
     "customer_email",
 ]
@@ -58,6 +59,7 @@ def _row(order_id: str, line_no: int = 1, **overrides: str) -> dict[str, str]:
         "channel": "store",
         "store_timezone": "UTC",
         "promo_code": "",
+        "customer_id": "CU-00001",
         "cashier_id": "C-9",
         "customer_email": "shopper@example.test",
     }

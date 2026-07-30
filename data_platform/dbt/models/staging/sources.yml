@@ -32,3 +32,22 @@ sources:
           - name: gross_amount
             description: Base-currency amount; source_currency retains the original.
             data_tests: [not_null]
+
+      - name: inventory__positions
+        description: >
+          Daily inventory positions — one row per SKU × store × day. A state
+          feed, not an event feed, which is why the fact it builds is a
+          periodic snapshot with semi-additive measures.
+        loaded_at_field: business_date
+        freshness:
+          warn_after: {count: 26, period: hour}
+          error_after: {count: 48, period: hour}
+        columns:
+          - name: sku
+            data_tests: [not_null]
+          - name: store_id
+            data_tests: [not_null]
+          - name: on_hand_qty
+            data_tests: [not_null]
+          - name: business_date
+            data_tests: [not_null]

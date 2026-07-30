@@ -9,7 +9,7 @@
 
 source: pos
 table: sales
-version: "1.0"
+version: "1.1"
 
 natural_key: [order_id, line_no]
 event_time_column: transaction_ts
@@ -109,6 +109,14 @@ columns:
     required: false
 
   - name: promo_code
+    type: string
+    class: dimension
+    required: false
+    normalize: upper
+
+  # Pseudonymous loyalty identifier — safe to join and aggregate on. The raw
+  # email below stays PII-flagged and never reaches the warehouse.
+  - name: customer_id
     type: string
     class: dimension
     required: false

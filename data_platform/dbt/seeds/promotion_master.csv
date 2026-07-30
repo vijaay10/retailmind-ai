@@ -1,0 +1,4 @@
+promo_code,promo_name,mechanic,depth_pct,start_date,end_date,funding
+SUMMER25,Summer Clearance 25%,percent_off,25,2026-06-15,2026-08-15,vendor
+BOGO-OW,Outerwear Buy One Get One,bogo,50,2026-07-01,2026-07-31,internal
+CLEAR-FW,Footwear Clearance,percent_off,40,2026-07-10,2026-08-31,internal

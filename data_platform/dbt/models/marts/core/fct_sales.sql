@@ -9,6 +9,7 @@
             "{{ create_index(['order_id']) }}",
             "{{ create_index(['product_key']) }}",
             "{{ create_index(['store_key']) }}",
+            "{{ create_index(['customer_key']) }}",
         ],
     )
 }}
@@ -64,6 +65,13 @@ keyed as (
         coalesce(p.product_key, {{ unknown_member_key() }}) as product_key,
         coalesce(st.store_key, {{ unknown_member_key() }}) as store_key,
         coalesce(c.channel_key, {{ unknown_member_key() }}) as channel_key,
+        coalesce(cust.customer_key, {{ unknown_member_key() }}) as customer_key,
+        -- No promo on the line is NOT_APPLICABLE (-2), not UNKNOWN (-1):
+        -- one means nothing to resolve, the other means we failed to.
+        case
+            when s.promo_code is null then {{ not_applicable_key() }}
+            else coalesce(promo.promo_key, {{ unknown_member_key() }})
+        end as promo_key,
         cast(strftime(s.business_date, '%Y%m%d') as integer) as date_key,
 
         -- Cost is taken from the *as-was* product version, so margin history
@@ -83,6 +91,12 @@ keyed as (
     left join {{ ref('dim_channel') }} c
         on s.channel_code = c.channel_code
 
+    left join {{ ref('dim_customer') }} cust
+        on s.customer_id = cust.customer_id
+
+    left join {{ ref('dim_promotion') }} promo
+        on s.promo_code = promo.promo_code
+
 )
 
 select
@@ -92,6 +106,8 @@ select
     product_key,
     store_key,
     channel_key,
+    customer_key,
+    promo_key,
 
     -- ── Degenerate dimensions (DB §6) ──
     order_id,

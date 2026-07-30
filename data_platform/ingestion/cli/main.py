@@ -25,6 +25,7 @@ from ingestion.core.duck import connect
 from ingestion.core.logging import configure_logging
 from ingestion.domain.schema import SourceSchema
 from ingestion.domain.window import Window
+from ingestion.generators import inventory_files
 from ingestion.generators.pos_files import generate_day
 from ingestion.landing.writer import committed_partitions
 from ingestion.pipeline import IngestionPipeline, RunSummary
@@ -90,14 +91,17 @@ def generate(
     business_date = date.fromisoformat(day) if day else date.today() - timedelta(days=1)
 
     batch = generate_day(settings.inbox_dir("pos"), business_date, stores=stores, seed=seed)
-    typer.echo(
-        f"wrote {batch.rows:,} rows across {len(batch.files)} files "
-        f"into {settings.inbox_dir('pos')}"
-    )
+    typer.echo(f"pos.sales:          {batch.rows:,} rows across {len(batch.files)} files")
     typer.echo(
         f"  planted: {batch.planted_rejects} unusable rows, "
         f"{batch.planted_duplicates} duplicate line(s)"
     )
+
+    positions = inventory_files.generate_day(
+        settings.inbox_dir("inventory"), business_date, stores=stores, seed=seed + 6
+    )
+    typer.echo(f"inventory.positions: {positions.rows:,} rows across {len(positions.files)} files")
+    typer.echo(f"  planted: {positions.planted_stockouts} stockout positions")
 
 
 @app.command()

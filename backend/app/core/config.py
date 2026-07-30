@@ -94,3 +94,37 @@ class DatabaseSettings(BaseSettings):
         return (
             f"postgresql+asyncpg://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
         )
+
+
+class WarehouseSettings(BaseSettings):
+    """RM_WAREHOUSE_* — the analytical store the semantic layer reads."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="RM_WAREHOUSE_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    profile: str = "duckdb"
+    duckdb_path: str = ".local/retailmind.duckdb"
+    semantic_schema: str = "analytics_semantic"
+    core_schema: str = "analytics_analytics"
+
+
+class CacheSettings(BaseSettings):
+    """RM_REDIS_* — the analytics result cache.
+
+    An unset URL disables caching rather than failing: reads pass through to
+    the warehouse and the product stays up, slower (Backend §20).
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="RM_REDIS_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    cache_url: str | None = None
+    ttl_seconds: int = 86_400

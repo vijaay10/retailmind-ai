@@ -46,6 +46,7 @@ HEADER = [
     "channel",
     "store_timezone",
     "promo_code",
+    "customer_id",
     "cashier_id",
     "customer_email",
 ]
@@ -60,6 +61,16 @@ CATALOG_SKUS = (
     + [f"BS-{1030 + i}" for i in range(10)]
 )
 CHANNELS = ["store", "ecom_web"]
+
+# Active promotions, matching the promotion master the warehouse seeds from.
+# Roughly a third of lines carry one — enough to measure lift against, without
+# making "promoted" the baseline.
+PROMOS = ["", "", "SUMMER25", "BOGO-OW", "CLEAR-FW"]
+
+# A fixed loyalty base: repeat purchasers are what make retention, RFM, and
+# lifetime value meaningful. Guest checkout (blank) is left in deliberately —
+# the identification rate is itself a KPI (Analytics §2).
+LOYALTY_IDS = [f"CU-{i:05d}" for i in range(1, 1201)]
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,7 +169,8 @@ def _sale_row(rng: random.Random, store_id: str, day: date, line: int) -> dict[s
         "currency": "USD",
         "channel": rng.choice(CHANNELS),
         "store_timezone": "America/Chicago",
-        "promo_code": "",
+        "promo_code": rng.choice(PROMOS),
+        "customer_id": rng.choice(LOYALTY_IDS) if rng.random() < 0.72 else "",
         "cashier_id": f"C-{rng.randint(1, 9)}",
         "customer_email": "shopper@example.test",
     }

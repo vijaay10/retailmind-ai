@@ -28,7 +28,7 @@ from ingestion.core.config import EtlSettings
 from ingestion.core.duck import connect
 from ingestion.domain.schema import SourceSchema
 from ingestion.domain.window import Window
-from ingestion.generators.pos_files import generate_day
+from ingestion.generators import inventory_files, pos_files
 from ingestion.pipeline import IngestionPipeline
 
 DBT_DIR = Path(__file__).resolve().parents[2] / "dbt"
@@ -72,19 +72,24 @@ def warehouse(tmp_path_factory: pytest.TempPathFactory) -> Iterator[duckdb.DuckD
         reject_rate_threshold=0.10,
     )
 
-    generate_day(settings.inbox_dir("pos"), BUSINESS_DAY, stores=6, lines_per_store=25)
+    pos_files.generate_day(
+        settings.inbox_dir("pos"), BUSINESS_DAY, stores=6, lines_per_store=25
+    )
+    inventory_files.generate_day(
+        settings.inbox_dir("inventory"), BUSINESS_DAY, stores=6, skus_per_store=20
+    )
 
-    schema = SourceSchema.from_yaml(
-        Path(__file__).resolve().parents[2] / "ingestion/schemas/pos/sales.yml"
-    )
+    schema_root = Path(__file__).resolve().parents[2] / "ingestion/schemas"
     conn = connect(settings.warehouse_path)
-    connector = CsvFileConnector(
-        schema=schema, settings=settings, connection=conn, expected_units=6
-    )
-    summary = IngestionPipeline(connector=connector, settings=settings, connection=conn).run(
-        Window.for_day(BUSINESS_DAY)
-    )
-    assert summary.status == "succeeded", "ingestion must succeed before the warehouse builds"
+    for source, table in (("pos", "sales"), ("inventory", "positions")):
+        schema = SourceSchema.from_yaml(schema_root / source / f"{table}.yml")
+        connector = CsvFileConnector(
+            schema=schema, settings=settings, connection=conn, expected_units=6
+        )
+        summary = IngestionPipeline(connector=connector, settings=settings, connection=conn).run(
+            Window.for_day(BUSINESS_DAY)
+        )
+        assert summary.status == "succeeded", f"{source} ingestion must succeed"
     conn.close()
 
     for step in ("seed", "snapshot"):
@@ -131,6 +136,10 @@ def test_star_schema_objects_exist(warehouse: duckdb.DuckDBPyConnection) -> None
         "mart_kpi_daily",
         "v_fct_sales",
         "v_mart_kpi_daily",
+        "dim_customer",
+        "dim_promotion",
+        "fct_inventory_daily",
+        "mart_inventory_daily",
     ):
         assert name in tables, f"{name} missing from the warehouse"
 

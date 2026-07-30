@@ -15,12 +15,20 @@ from fastapi import FastAPI
 from sqlalchemy import text
 
 from app.api.v1.router import api_router
-from app.core.config import AuthSettings, DatabaseSettings, Settings
+from app.core.config import (
+    AuthSettings,
+    CacheSettings,
+    DatabaseSettings,
+    Settings,
+    WarehouseSettings,
+)
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.middleware import install_middleware
 from app.core.security import TokenSigner
+from app.infrastructure.cache.redis_cache import build_cache
 from app.infrastructure.db.session import create_engine, create_session_factory
+from app.infrastructure.semantic.client import SemanticLayerClient
 
 log = structlog.get_logger(__name__)
 
@@ -59,6 +67,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("app.starting", env=app.state.settings.env, version=app.state.settings.version)
     yield
     await app.state.engine.dispose()
+    await app.state.analytics_cache.close()
     log.info("app.stopped")
 
 
@@ -90,6 +99,15 @@ def create_app(
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)
     app.state.token_signer = TokenSigner(auth_settings)
+
+    warehouse_settings = WarehouseSettings()
+    cache_settings = CacheSettings()
+    app.state.semantic_client = SemanticLayerClient(
+        warehouse_settings.duckdb_path,
+        semantic_schema=warehouse_settings.semantic_schema,
+        core_schema=warehouse_settings.core_schema,
+    )
+    app.state.analytics_cache = build_cache(cache_settings.cache_url, env=settings.env)
 
     install_middleware(
         app,

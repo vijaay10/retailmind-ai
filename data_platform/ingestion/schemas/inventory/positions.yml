@@ -1,0 +1,81 @@
+# Daily inventory positions — a periodic snapshot source (DB design §6).
+#
+# Unlike sales, this feed carries *state*, not events: one row per SKU × store
+# × day describing what was on hand at close. That grain is why the fact is a
+# periodic snapshot and why its measures are semi-additive — they sum across
+# stores and SKUs but never across dates.
+
+source: inventory
+table: positions
+version: "1.0"
+
+natural_key: [sku, store_id, snapshot_date]
+event_time_column: snapshot_ts
+timezone_column: store_timezone
+default_timezone: UTC
+
+columns:
+  - name: sku
+    type: string
+    class: business_key
+    normalize: upper
+
+  - name: store_id
+    type: string
+    class: business_key
+    normalize: upper
+
+  - name: snapshot_date
+    type: date
+    class: business_key
+    formats: ["%Y-%m-%d"]
+
+  - name: snapshot_ts
+    type: timestamp
+    class: event_time
+    formats: ["%Y-%m-%d %H:%M:%S"]
+
+  # Positions, not movements. Negative on-hand is physically impossible and
+  # signals a corrupt feed rather than an unusual day.
+  - name: on_hand_qty
+    type: decimal
+    class: measure
+    min: 0
+    max: 1000000
+
+  - name: on_order_qty
+    type: decimal
+    class: measure
+    required: false
+    min: 0
+    max: 1000000
+
+  - name: in_transit_qty
+    type: decimal
+    class: measure
+    required: false
+    min: 0
+    max: 1000000
+
+  - name: unit_cost
+    type: decimal
+    class: measure
+    currency_column: currency
+    min: 0
+    max: 100000
+
+  - name: currency
+    type: string
+    class: dimension
+    normalize: upper
+    enum: [USD, EUR, GBP, CAD, MXN]
+
+  - name: store_timezone
+    type: string
+    class: dimension
+    required: false
+
+metadata:
+  owner: data-platform
+  sla: "positions available by 03:00 tenant-local"
+  expected_units: 120

@@ -34,6 +34,10 @@ conformed as (
         store_id,
         lower(channel) as channel_code,
         nullif(promo_code, '') as promo_code,
+        -- Guest checkout leaves this blank; it stays NULL rather than
+        -- becoming a fake identity, because the identification rate is
+        -- itself a reported KPI (Analytics §2).
+        nullif(customer_id, '') as customer_id,
 
         -- ── Grain and time ──
         business_date,
