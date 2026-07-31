@@ -155,11 +155,15 @@ class AnalyticsRepository:
         elif request.metrics:
             order_by.append((request.metrics[0], True))
 
-        # A deterministic tiebreaker keeps pagination stable when several rows
-        # share the sort value — without it, page 2 can repeat a row from
-        # page 1 (Backend §22).
-        if group_columns:
-            order_by.append((group_columns[0], False))
+        # Every grouping column becomes a tiebreaker, in order. Two reasons:
+        # pagination stays stable when rows share the primary sort value
+        # (Backend §22), and multi-dimensional results arrive fully ordered —
+        # a retention curve sorted by cohort but not by week is a scatter of
+        # points the client has to re-sort before it can draw a line.
+        sorted_columns = {column for column, _ in order_by}
+        for column in group_columns:
+            if column not in sorted_columns:
+                order_by.append((column, False))
 
         return SemanticQuery(
             relation=domain.relation,

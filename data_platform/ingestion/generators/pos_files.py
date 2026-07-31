@@ -29,6 +29,8 @@ from pathlib import Path
 
 import structlog
 
+from ingestion.generators.customers import build_population, buyers_for_day
+
 log = structlog.get_logger(__name__)
 
 HEADER = [
@@ -67,10 +69,18 @@ CHANNELS = ["store", "ecom_web"]
 # making "promoted" the baseline.
 PROMOS = ["", "", "SUMMER25", "BOGO-OW", "CLEAR-FW"]
 
-# A fixed loyalty base: repeat purchasers are what make retention, RFM, and
-# lifetime value meaningful. Guest checkout (blank) is left in deliberately —
-# the identification rate is itself a KPI (Analytics §2).
-LOYALTY_IDS = [f"CU-{i:05d}" for i in range(1, 1201)]
+#: How many customers exist per daily order line.
+#:
+#: The base must scale with volume, not sit at a fixed constant: only a
+#: fraction of a loyalty file shops on any given day (roughly 4–5% at these
+#: purchase probabilities), so a base too small for the line count leaves most
+#: lines unattributable and drives the identification rate toward zero. At this
+#: ratio the daily shopper pool covers a realistic share of baskets.
+CUSTOMERS_PER_DAILY_LINE = 11
+
+#: Share of lines that carry no loyalty id at all. Guest checkout is left in
+#: deliberately: the identification rate is itself a reported KPI (Analytics §2).
+IDENTIFIED_SHARE = 0.72
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +102,8 @@ def generate_day(
     timezone: str = "America/Chicago",
     seed: int = 7,
     plant_bad_rows: bool = True,
+    history_start: date | None = None,
+    history_end: date | None = None,
 ) -> GeneratedBatch:
     """Write one CSV per store for ``business_day``.
 
@@ -104,6 +116,28 @@ def generate_day(
     # cryptographic generator would defeat it.
     rng = random.Random(seed)  # noqa: S311
     inbox.mkdir(parents=True, exist_ok=True)
+
+    # The population spans the whole history window, not just this day, so a
+    # customer's tier and acquisition date stay fixed across the run. Without
+    # the window the population would be rebuilt per day and every customer
+    # would silently change behaviour.
+    population = build_population(
+        stores * lines_per_store * CUSTOMERS_PER_DAILY_LINE,
+        history_start or business_day,
+        history_end or business_day,
+    )
+    shoppers = buyers_for_day(
+        population, business_day, seed=seed, max_buyers=stores * lines_per_store
+    )
+    # Assign each shopper a realistic basket (1–3 lines) and lay the
+    # assignments out as a flat queue. Picking a random shopper *per line*
+    # would hand a small daily pool dozens of orders each, which is how every
+    # customer ends up looking Loyal and the lifecycle funnel collapses to one
+    # stage. Lines beyond the queue become guest checkout.
+    line_owners: list[str] = []
+    for shopper in shoppers:
+        line_owners.extend([shopper] * rng.randint(1, 3))
+    rng.shuffle(line_owners)
     stamp = business_day.strftime("%Y%m%d")
 
     written: list[Path] = []
@@ -111,7 +145,10 @@ def generate_day(
 
     for index in range(1, stores + 1):
         store_id = f"S{2000 + index}"
-        rows = [_sale_row(rng, store_id, business_day, line) for line in range(lines_per_store)]
+        rows = []
+        for line in range(lines_per_store):
+            owner = line_owners.pop() if line_owners else ""
+            rows.append(_sale_row(rng, store_id, business_day, line, owner))
 
         if plant_bad_rows and index == 1:
             # One unkeyed row and one uncastable measure — the reject path.
@@ -149,7 +186,9 @@ def generate_day(
     return GeneratedBatch(written, total, planted_rejects, planted_duplicates)
 
 
-def _sale_row(rng: random.Random, store_id: str, day: date, line: int) -> dict[str, str]:
+def _sale_row(
+    rng: random.Random, store_id: str, day: date, line: int, customer_id: str
+) -> dict[str, str]:
     hour = 13 + (line % 11)  # 13:00–23:00 UTC = trading hours in Chicago
     timestamp = f"{day.isoformat()} {hour:02d}:{(line * 7) % 60:02d}:00"
     unit_price = round(rng.uniform(12.0, 180.0), 2)
@@ -173,7 +212,9 @@ def _sale_row(rng: random.Random, store_id: str, day: date, line: int) -> dict[s
         "channel": rng.choice(CHANNELS),
         "store_timezone": "America/Chicago",
         "promo_code": rng.choice(PROMOS),
-        "customer_id": rng.choice(LOYALTY_IDS) if rng.random() < 0.72 else "",
+        # Guest checkout when no shopper owns this line, or by design for a
+        # share of identified ones — the identification rate is a KPI.
+        "customer_id": customer_id if rng.random() < IDENTIFIED_SHARE else "",
         "cashier_id": f"C-{rng.randint(1, 9)}",
         "customer_email": "shopper@example.test",
     }

@@ -256,7 +256,12 @@ STORE = Domain(
 )
 
 
-# ── Customer (Analytics §2) ──────────────────────────────────────────
+# ── Customer (Analytics §2) ─────────────────────────────────────────
+#
+# Every customer domain reads a *segment-level* relation. Individual rows
+# exist in dim_customer for joins, but nothing here can project a person:
+# the product analyses cohorts, and making that structural beats trusting a
+# policy nobody enforces.
 
 CUSTOMER = Domain(
     key="customer",
@@ -308,6 +313,301 @@ CUSTOMER = Domain(
         ),
     },
     dimensions=_dims(("segment", "RFM Segment", "rfm_segment")),
+)
+
+
+RFM_GRID = Domain(
+    key="rfm",
+    label="RFM Grid",
+    relation="v_mart_customer_rfm_grid",
+    date_column="",
+    metrics={
+        "customers": Metric(
+            "customers",
+            "Customers",
+            "sum(customers)",
+            Additivity.FULL,
+            "count",
+            "Customers in the cell.",
+        ),
+        "segment_value": Metric(
+            "segment_value",
+            "Cell Value",
+            "sum(segment_value)",
+            Additivity.FULL,
+            "currency",
+            "Lifetime value in the cell.",
+        ),
+        "avg_lifetime_value": Metric(
+            "avg_lifetime_value",
+            "Avg Lifetime Value",
+            "sum(segment_value) / nullif(sum(customers), 0)",
+            Additivity.NON,
+            "currency",
+            "Recomputed at grain.",
+            ratio_of=("segment_value", "customers"),
+        ),
+        "at_risk_customers": Metric(
+            "at_risk_customers",
+            "At Risk",
+            "sum(at_risk_customers)",
+            Additivity.FULL,
+            "count",
+            "Customers overdue by two or more purchase cycles.",
+        ),
+        "vip_customers": Metric(
+            "vip_customers",
+            "VIPs",
+            "sum(vip_customers)",
+            Additivity.FULL,
+            "count",
+            "Top-decile repeat customers.",
+        ),
+    },
+    dimensions=_dims(
+        ("recency_score", "Recency Score", "recency_score"),
+        ("frequency_score", "Frequency Score", "frequency_score"),
+    ),
+)
+
+
+COHORTS = Domain(
+    key="cohorts",
+    label="Retention Cohorts",
+    relation="v_mart_customer_cohorts",
+    date_column="",  # the axis is weeks-since-acquisition, not a calendar date
+    metrics={
+        "cohort_customers": Metric(
+            "cohort_customers",
+            "Cohort Size",
+            "max(cohort_customers)",
+            Additivity.NON,
+            "count",
+            "Customers acquired in the cohort week; constant across the row, so max not sum.",
+        ),
+        "active_customers": Metric(
+            "active_customers",
+            "Active",
+            "sum(active_customers)",
+            Additivity.FULL,
+            "count",
+            "Customers who purchased.",
+        ),
+        "retention_rate": Metric(
+            "retention_rate",
+            "Retention Rate",
+            "sum(active_customers) / nullif(max(cohort_customers), 0)",
+            Additivity.NON,
+            "rate",
+            "Share of the cohort still active, recomputed at grain.",
+            ratio_of=("active_customers", "cohort_customers"),
+        ),
+        "revenue": Metric(
+            "revenue",
+            "Revenue",
+            "sum(revenue)",
+            Additivity.FULL,
+            "currency",
+            "Revenue from the cohort.",
+        ),
+        "cumulative_value_per_customer": Metric(
+            "cumulative_value_per_customer",
+            "Cumulative Value per Customer",
+            "max(cumulative_value_per_customer)",
+            Additivity.NON,
+            "currency",
+            "Running value per acquired customer — the payback curve.",
+        ),
+    },
+    dimensions=_dims(
+        ("cohort_week", "Cohort Week", "cohort_week"),
+        ("weeks_since", "Weeks Since Acquisition", "weeks_since_acquisition"),
+    ),
+)
+
+
+LIFECYCLE = Domain(
+    key="lifecycle",
+    label="Customer Journey",
+    relation="v_mart_customer_lifecycle",
+    date_column="",
+    metrics={
+        "customers": Metric(
+            "customers",
+            "Customers",
+            "sum(customers)",
+            Additivity.FULL,
+            "count",
+            "Customers at this stage.",
+        ),
+        "reached_stage": Metric(
+            "reached_stage",
+            "Reached Stage",
+            "max(reached_stage)",
+            Additivity.NON,
+            "count",
+            "Customers who reached this stage or beyond — cumulative, so max not sum.",
+        ),
+        "conversion_from_previous": Metric(
+            "conversion_from_previous",
+            "Conversion",
+            "max(conversion_from_previous)",
+            Additivity.NON,
+            "rate",
+            "Share of the previous stage that progressed.",
+        ),
+        "stage_value": Metric(
+            "stage_value",
+            "Stage Value",
+            "sum(stage_value)",
+            Additivity.FULL,
+            "currency",
+            "Lifetime value at this stage.",
+        ),
+        "at_risk_rate": Metric(
+            "at_risk_rate",
+            "At-Risk Rate",
+            "sum(at_risk_customers) / nullif(sum(customers), 0)",
+            Additivity.NON,
+            "rate",
+            "Share of the stage drifting away.",
+            ratio_of=("at_risk_customers", "customers"),
+        ),
+        "at_risk_customers": Metric(
+            "at_risk_customers",
+            "At Risk",
+            "sum(at_risk_customers)",
+            Additivity.FULL,
+            "count",
+            "Customers overdue to purchase.",
+        ),
+        "avg_days_between_orders": Metric(
+            "avg_days_between_orders",
+            "Purchase Cadence",
+            "avg(avg_days_between_orders)",
+            Additivity.NON,
+            "days",
+            "Average days between orders at this stage.",
+        ),
+    },
+    dimensions=_dims(
+        ("stage", "Lifecycle Stage", "lifecycle_stage"),
+        # Exposed so the funnel has a defined sequence; a client should not
+        # have to hardcode New → Repeat → Established → Loyal.
+        ("stage_order", "Stage Order", "stage_order"),
+    ),
+)
+
+
+CHURN = Domain(
+    key="churn",
+    label="Churn Risk",
+    relation="v_mart_customer_churn_risk",
+    date_column="",
+    metrics={
+        "customers": Metric(
+            "customers",
+            "Customers",
+            "sum(customers)",
+            Additivity.FULL,
+            "count",
+            "Customers in the risk band.",
+        ),
+        "value_at_risk": Metric(
+            "value_at_risk",
+            "Value at Risk",
+            "sum(value_at_risk)",
+            Additivity.FULL,
+            "currency",
+            "Lifetime value carried by these customers — the number "
+            "that earns a retention meeting.",
+        ),
+        "vip_value_at_risk": Metric(
+            "vip_value_at_risk",
+            "VIP Value at Risk",
+            "sum(vip_value_at_risk)",
+            Additivity.FULL,
+            "currency",
+            "Value held by at-risk VIPs: expensive to replace and still reachable.",
+        ),
+        "avg_cycles_overdue": Metric(
+            "avg_cycles_overdue",
+            "Avg Cycles Overdue",
+            "avg(avg_cycles_overdue)",
+            Additivity.NON,
+            "count",
+            "How many purchase cycles have elapsed unfulfilled.",
+        ),
+        "vip_customers": Metric(
+            "vip_customers",
+            "VIPs",
+            "sum(vip_customers)",
+            Additivity.FULL,
+            "count",
+            "VIPs in this band.",
+        ),
+    },
+    dimensions=_dims(
+        ("risk_band", "Risk Band", "churn_risk_band"),
+        ("segment", "RFM Segment", "rfm_segment"),
+        ("stage", "Lifecycle Stage", "lifecycle_stage"),
+    ),
+)
+
+
+VIP = Domain(
+    key="vip",
+    label="VIP Customers",
+    relation="v_mart_customer_vip",
+    date_column="",
+    metrics={
+        "vip_customers": Metric(
+            "vip_customers",
+            "VIPs",
+            "sum(vip_customers)",
+            Additivity.FULL,
+            "count",
+            "Top-decile repeat customers.",
+        ),
+        "vip_value": Metric(
+            "vip_value",
+            "VIP Value",
+            "sum(vip_value)",
+            Additivity.FULL,
+            "currency",
+            "Lifetime value held by VIPs.",
+        ),
+        "avg_lifetime_value": Metric(
+            "avg_lifetime_value",
+            "Avg Lifetime Value",
+            "sum(vip_value) / nullif(sum(vip_customers), 0)",
+            Additivity.NON,
+            "currency",
+            "Recomputed at grain.",
+            ratio_of=("vip_value", "vip_customers"),
+        ),
+        "avg_predicted_clv_12m": Metric(
+            "avg_predicted_clv_12m",
+            "Avg Predicted 12m CLV",
+            "avg(avg_predicted_clv_12m)",
+            Additivity.NON,
+            "currency",
+            "Extrapolation from observed behaviour, not a fitted "
+            "model — read with its confidence grade.",
+        ),
+        "share_of_total_value": Metric(
+            "share_of_total_value",
+            "Share of Total Value",
+            "sum(share_of_total_value)",
+            Additivity.FULL,
+            "rate",
+            "Portion of all customer value this slice holds.",
+        ),
+    },
+    dimensions=_dims(
+        ("segment", "RFM Segment", "rfm_segment"),
+        ("risk_band", "Risk Band", "churn_risk_band"),
+    ),
 )
 
 
@@ -602,6 +902,11 @@ DOMAINS: dict[str, Domain] = {
         MARKETING,
         PROFITABILITY,
         PRODUCT,
+        RFM_GRID,
+        COHORTS,
+        LIFECYCLE,
+        CHURN,
+        VIP,
     )
 }
 

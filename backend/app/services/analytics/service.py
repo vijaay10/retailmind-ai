@@ -37,6 +37,15 @@ DOMAIN_PERMISSIONS: dict[str, Permission] = {
     # Product performance rides with revenue: anyone who can see revenue
     # can see which products produced it.
     "product": Permission.ANALYTICS_REVENUE_READ,
+    # Every customer-intelligence surface rides the customer module: RFM,
+    # cohorts, journey, churn, and VIP are views of one population, and
+    # splitting their permissions would let a role see the risk without the
+    # segment it belongs to.
+    "rfm": Permission.ANALYTICS_CUSTOMER_READ,
+    "cohorts": Permission.ANALYTICS_CUSTOMER_READ,
+    "lifecycle": Permission.ANALYTICS_CUSTOMER_READ,
+    "churn": Permission.ANALYTICS_CUSTOMER_READ,
+    "vip": Permission.ANALYTICS_CUSTOMER_READ,
 }
 
 DEFAULT_LOOKBACK_DAYS = 30

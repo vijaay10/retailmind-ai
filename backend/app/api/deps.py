@@ -35,6 +35,7 @@ from app.infrastructure.db.repositories.insights import (
 from app.infrastructure.semantic.repository import AnalyticsRepository
 from app.services.analytics.service import AnalyticsService
 from app.services.auth.service import AuthService
+from app.services.customers.service import CustomerIntelligenceService
 from app.services.dashboard.service import ExecutiveDashboardService
 from app.services.shared import authz
 from app.services.shared.uow import UnitOfWork
@@ -177,3 +178,15 @@ def get_dashboard_service(
 
 
 DashboardServiceDep = Annotated[ExecutiveDashboardService, Depends(get_dashboard_service)]
+
+
+def get_customer_service(analytics: AnalyticsServiceDep) -> CustomerIntelligenceService:
+    """Customer intelligence over the governed analytics registry.
+
+    Holds no state of its own: the privacy floor and aggregation rules are
+    pure functions of the rows the registry returns.
+    """
+    return CustomerIntelligenceService(analytics)
+
+
+CustomerServiceDep = Annotated[CustomerIntelligenceService, Depends(get_customer_service)]
