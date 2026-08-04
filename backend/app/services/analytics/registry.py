@@ -892,6 +892,649 @@ PRODUCT = Domain(
 )
 
 
+# ── Inventory intelligence (Analytics §7) ────────────────────────────
+#
+# The five domains below read *point-in-time* marts: one row per position (or
+# per supplier) as of the latest snapshot, not a time series. They therefore
+# declare no date column — a caller cannot ask for "reorder suggestions last
+# Tuesday", because the warehouse keeps the current picture, not a replayable
+# history of every recommendation it has ever made.
+#
+# Where a mart already stores a rate or a score, the registry still recomputes
+# it from its components. At the mart's own grain the two agree exactly; at any
+# coarser grain only the recomputation is correct, and having one expression
+# that is right at every grain is worth more than a column read.
+
+
+PRODUCT_ABC = Domain(
+    key="product_abc",
+    label="ABC Classification",
+    relation="v_mart_product_abc",
+    date_column="",
+    metrics={
+        "skus": Metric(
+            "skus",
+            "SKUs",
+            "count(*)",
+            Additivity.FULL,
+            "count",
+            "Number of products in the class.",
+        ),
+        "revenue": Metric(
+            "revenue",
+            "Revenue",
+            "sum(revenue)",
+            Additivity.FULL,
+            "currency",
+            "Net revenue over the classification window.",
+        ),
+        "units": Metric(
+            "units", "Units", "sum(units)", Additivity.FULL, "units", "Net units sold."
+        ),
+        "margin": Metric(
+            "margin", "Margin", "sum(margin)", Additivity.FULL, "currency", "Gross margin."
+        ),
+        "orders": Metric(
+            "orders",
+            "Orders",
+            "sum(orders)",
+            Additivity.NON,
+            "count",
+            "Orders containing the product. Not additive: one basket holding "
+            "two classes belongs to both.",
+        ),
+        "margin_rate": Metric(
+            "margin_rate",
+            "Margin Rate",
+            "sum(margin) / nullif(sum(revenue), 0)",
+            Additivity.NON,
+            "rate",
+            "Margin share of revenue, recomputed at grain.",
+            ratio_of=("margin", "revenue"),
+        ),
+        "units_per_selling_day": Metric(
+            "units_per_selling_day",
+            "Units per Selling Day",
+            "sum(units) / nullif(sum(selling_days), 0)",
+            Additivity.NON,
+            "units",
+            "Velocity, normalised for products that were not on sale every day.",
+        ),
+        "avg_service_level": Metric(
+            "avg_service_level",
+            "Target Service Level",
+            "avg(target_service_level)",
+            Additivity.NON,
+            "rate",
+            "Service level the class is planned to, which drives safety stock.",
+        ),
+    },
+    dimensions=_dims(
+        ("abc_class", "ABC Class", "abc_class"),
+        ("sku", "SKU", "sku"),
+        ("product_name", "Product", "product_name"),
+        ("category", "Category", "category"),
+        ("department", "Department", "department"),
+    ),
+)
+
+
+INVENTORY_HEALTH = Domain(
+    key="inventory_health",
+    label="Inventory Health",
+    relation="v_mart_inventory_health",
+    date_column="",
+    metrics={
+        "positions": Metric(
+            "positions",
+            "Positions",
+            "count(*)",
+            Additivity.FULL,
+            "count",
+            "SKU × store positions in scope.",
+        ),
+        "on_hand_units": Metric(
+            "on_hand_units",
+            "On Hand Units",
+            "sum(on_hand_qty)",
+            Additivity.SEMI,
+            "units",
+            "Units in stock. Semi-additive: valid across stores and SKUs, never across dates.",
+        ),
+        "on_order_units": Metric(
+            "on_order_units",
+            "On Order Units",
+            "sum(on_order_total)",
+            Additivity.SEMI,
+            "units",
+            "Units already inbound, reconciled to one source. The position "
+            "feed and the purchasing feed both report in-transit stock; "
+            "adding them double-counts it.",
+        ),
+        "inventory_value": Metric(
+            "inventory_value",
+            "Inventory Value",
+            "sum(inventory_value_cost)",
+            Additivity.SEMI,
+            "currency",
+            "Stock at cost.",
+        ),
+        "stockout_positions": Metric(
+            "stockout_positions",
+            "Stockouts",
+            "count(*) filter (where is_stockout)",
+            Additivity.FULL,
+            "count",
+            "Positions at zero on hand.",
+        ),
+        "at_risk_positions": Metric(
+            "at_risk_positions",
+            "At Risk",
+            "count(*) filter (where stockout_before_lead_time)",
+            Additivity.FULL,
+            "count",
+            "Positions projected to hit zero before a replenishment could "
+            "arrive — the ones where ordering today is already late.",
+        ),
+        "overstocked_positions": Metric(
+            "overstocked_positions",
+            "Overstocked",
+            "count(*) filter (where is_overstocked)",
+            Additivity.FULL,
+            "count",
+            "Positions carrying more than twelve weeks of cover.",
+        ),
+        "dead_stock_positions": Metric(
+            "dead_stock_positions",
+            "Dead Stock",
+            "count(*) filter (where is_dead_stock)",
+            Additivity.FULL,
+            "count",
+            "Stock on hand with no demand at all in the trailing window.",
+        ),
+        "excess_units": Metric(
+            "excess_units",
+            "Excess Units",
+            "sum(excess_units)",
+            Additivity.SEMI,
+            "units",
+            "Units held above the overstock threshold.",
+        ),
+        "excess_value": Metric(
+            "excess_value",
+            "Excess Value",
+            "sum(excess_value)",
+            Additivity.SEMI,
+            "currency",
+            "Working capital tied up in excess stock.",
+        ),
+        "stockout_rate": Metric(
+            "stockout_rate",
+            "Stockout Rate",
+            "count(*) filter (where is_stockout)::double / nullif(count(*), 0)",
+            Additivity.NON,
+            "rate",
+            "Share of positions at zero, recomputed from counts.",
+            ratio_of=("stockout_positions", "positions"),
+        ),
+        "daily_demand": Metric(
+            "daily_demand",
+            "Daily Demand",
+            "sum(avg_daily_demand)",
+            Additivity.FULL,
+            "units",
+            "Average units sold per day across the positions in scope.",
+        ),
+        "cover_days": Metric(
+            "cover_days",
+            "Cover Days",
+            "sum(on_hand_qty) / nullif(sum(avg_daily_demand), 0)",
+            Additivity.NON,
+            "days",
+            "Days of supply at current demand, recomputed at grain rather "
+            "than averaged — a stockout has infinite cover and would otherwise "
+            "drag the mean the wrong way.",
+        ),
+        "avg_days_since_receipt": Metric(
+            "avg_days_since_receipt",
+            "Stock Age",
+            "avg(days_since_receipt)",
+            Additivity.NON,
+            "days",
+            "Mean days since the last delivery — the aging measure.",
+        ),
+        "soonest_stockout_days": Metric(
+            "soonest_stockout_days",
+            "Soonest Stockout",
+            "min(days_until_stockout)",
+            Additivity.NON,
+            "days",
+            "Days until the first position in the group runs out.",
+        ),
+    },
+    dimensions=_dims(
+        ("sku", "SKU", "sku"),
+        ("product_name", "Product", "product_name"),
+        ("category", "Category", "category"),
+        ("department", "Department", "department"),
+        ("store_id", "Store", "store_id"),
+        ("store_name", "Store Name", "store_name"),
+        ("region", "Region", "region"),
+        ("store_cluster", "Store Cluster", "store_cluster"),
+        ("supplier_id", "Supplier", "supplier_id"),
+        ("supplier_name", "Supplier Name", "supplier_name"),
+        ("abc_class", "ABC Class", "abc_class"),
+        ("aging_bucket", "Aging Bucket", "aging_bucket"),
+        ("position_date", "As Of", "position_date"),
+    ),
+)
+
+
+REORDER = Domain(
+    key="reorder",
+    label="Reorder Suggestions",
+    relation="v_mart_reorder_suggestions",
+    date_column="",
+    metrics={
+        "positions": Metric(
+            "positions", "Positions", "count(*)", Additivity.FULL, "count", "Positions in scope."
+        ),
+        "below_reorder_point": Metric(
+            "below_reorder_point",
+            "Below Reorder Point",
+            "count(*) filter (where below_reorder_point)",
+            Additivity.FULL,
+            "count",
+            "Positions where inventory position has fallen through the "
+            "reorder point and an order is due.",
+        ),
+        "suggested_order_qty": Metric(
+            "suggested_order_qty",
+            "Suggested Order",
+            "sum(suggested_order_qty)",
+            Additivity.FULL,
+            "units",
+            "Units to order to reach the order-up-to level.",
+        ),
+        "revenue_at_risk": Metric(
+            "revenue_at_risk",
+            "Revenue at Risk",
+            "sum(revenue_at_risk)",
+            Additivity.FULL,
+            "currency",
+            "Sales expected to be lost before replenishment lands, if nothing "
+            "is ordered. This is the ranking number: it puts a fast-moving "
+            "staple above a slow one with a worse cover ratio.",
+        ),
+        "on_hand_units": Metric(
+            "on_hand_units",
+            "On Hand",
+            "sum(on_hand_qty)",
+            Additivity.SEMI,
+            "units",
+            "Units in stock.",
+        ),
+        "on_order_units": Metric(
+            "on_order_units",
+            "On Order",
+            "sum(on_order_total)",
+            Additivity.SEMI,
+            "units",
+            "Units already inbound, reconciled to one source. The position "
+            "feed and the purchasing feed both report in-transit stock; "
+            "adding them double-counts it and under-orders.",
+        ),
+        "safety_stock": Metric(
+            "safety_stock",
+            "Safety Stock",
+            "sum(safety_stock)",
+            Additivity.FULL,
+            "units",
+            "Buffer covering demand and lead-time variability at the target service level.",
+        ),
+        "reorder_point": Metric(
+            "reorder_point",
+            "Reorder Point",
+            "sum(reorder_point)",
+            Additivity.FULL,
+            "units",
+            "Lead-time demand plus safety stock.",
+        ),
+        "order_up_to_level": Metric(
+            "order_up_to_level",
+            "Order Up To",
+            "sum(order_up_to_level)",
+            Additivity.FULL,
+            "units",
+            "Target position after ordering.",
+        ),
+        "daily_demand": Metric(
+            "daily_demand",
+            "Daily Demand",
+            "sum(avg_daily_demand)",
+            Additivity.FULL,
+            "units",
+            "Average units per day.",
+        ),
+        "lead_time_days": Metric(
+            "lead_time_days",
+            "Lead Time",
+            "max(effective_lead_time_days)",
+            Additivity.NON,
+            "days",
+            "Longest lead time in the group — the one that governs when an order must be placed.",
+        ),
+        "soonest_stockout_days": Metric(
+            "soonest_stockout_days",
+            "Soonest Stockout",
+            "min(days_until_stockout)",
+            Additivity.NON,
+            "days",
+            "Days until the first position runs out.",
+        ),
+    },
+    dimensions=_dims(
+        ("sku", "SKU", "sku"),
+        ("product_name", "Product", "product_name"),
+        ("category", "Category", "category"),
+        ("store_id", "Store", "store_id"),
+        ("store_name", "Store Name", "store_name"),
+        ("region", "Region", "region"),
+        ("supplier_id", "Supplier", "supplier_id"),
+        ("supplier_name", "Supplier Name", "supplier_name"),
+        ("abc_class", "ABC Class", "abc_class"),
+        ("on_order_source", "On Order Source", "on_order_source"),
+    ),
+)
+
+
+SUPPLIER = Domain(
+    key="supplier",
+    label="Supplier Performance",
+    relation="v_mart_supplier_performance",
+    date_column="",
+    metrics={
+        "suppliers": Metric(
+            "suppliers", "Suppliers", "count(*)", Additivity.FULL, "count", "Vendors in scope."
+        ),
+        "po_lines": Metric(
+            "po_lines",
+            "PO Lines",
+            "sum(po_lines)",
+            Additivity.FULL,
+            "count",
+            "Purchase-order lines raised.",
+        ),
+        "open_lines": Metric(
+            "open_lines",
+            "Open Lines",
+            "sum(open_lines)",
+            Additivity.FULL,
+            "count",
+            "Lines still in transit. Excluded from every performance rate: a "
+            "line that has not arrived yet has not failed.",
+        ),
+        "closed_lines": Metric(
+            "closed_lines",
+            "Closed Lines",
+            "sum(closed_lines)",
+            Additivity.FULL,
+            "count",
+            "Received lines — the denominator for OTIF.",
+        ),
+        "ordered_value": Metric(
+            "ordered_value",
+            "Ordered Value",
+            "sum(ordered_value)",
+            Additivity.FULL,
+            "currency",
+            "Value placed with the supplier. The exposure behind the risk band.",
+        ),
+        "otif_rate": Metric(
+            "otif_rate",
+            "OTIF",
+            "sum(otif_lines)::double / nullif(sum(closed_lines), 0)",
+            Additivity.NON,
+            "rate",
+            "On time *and* in full. Recomputed from line counts, so a vendor "
+            "with 2,000 lines does not weigh the same as one with 20.",
+            ratio_of=("otif_lines", "closed_lines"),
+        ),
+        "on_time_rate": Metric(
+            "on_time_rate",
+            "On Time",
+            "sum(on_time_lines)::double / nullif(sum(closed_lines), 0)",
+            Additivity.NON,
+            "rate",
+            "Received on or before the promise date.",
+            ratio_of=("on_time_lines", "closed_lines"),
+        ),
+        "in_full_rate": Metric(
+            "in_full_rate",
+            "In Full",
+            "sum(in_full_lines)::double / nullif(sum(closed_lines), 0)",
+            Additivity.NON,
+            "rate",
+            "Received complete. Split from on-time deliberately: late and "
+            "short are different failures needing different conversations.",
+            ratio_of=("in_full_lines", "closed_lines"),
+        ),
+        "fill_rate": Metric(
+            "fill_rate",
+            "Fill Rate",
+            "sum(received_qty) / nullif(sum(closed_ordered_qty), 0)",
+            Additivity.NON,
+            "rate",
+            "Units received against units ordered — how short a short shipment actually was.",
+        ),
+        "avg_lead_time_days": Metric(
+            "avg_lead_time_days",
+            "Lead Time",
+            "sum(avg_lead_time_days * closed_lines) / nullif(sum(closed_lines), 0)",
+            Additivity.NON,
+            "days",
+            "Line-weighted mean lead time.",
+        ),
+        "avg_days_late": Metric(
+            "avg_days_late",
+            "Days Late",
+            "sum(avg_days_late * closed_lines) / nullif(sum(closed_lines), 0)",
+            Additivity.NON,
+            "days",
+            "Line-weighted mean variance against the promise date. Negative means early.",
+        ),
+        "worst_lead_time_stddev": Metric(
+            "worst_lead_time_stddev",
+            "Lead Time Variability",
+            "max(lead_time_stddev)",
+            Additivity.NON,
+            "days",
+            "Worst spread in the group. Variability drives safety stock far "
+            "harder than average lateness does — a consistently slow supplier "
+            "can be planned around, an erratic one cannot.",
+        ),
+        "worst_lead_time_cov": Metric(
+            "worst_lead_time_cov",
+            "Lead Time CoV",
+            "max(lead_time_cov)",
+            Additivity.NON,
+            "ratio",
+            "Spread relative to the mean — comparable across suppliers whose "
+            "lead times differ by weeks.",
+        ),
+        "p90_lead_time_days": Metric(
+            "p90_lead_time_days",
+            "P90 Lead Time",
+            "max(p90_lead_time_days)",
+            Additivity.NON,
+            "days",
+            "The lead time to plan to. Planning to the mean is planning to be "
+            "out of stock half the time.",
+        ),
+    },
+    dimensions=_dims(
+        ("supplier_id", "Supplier", "supplier_id"),
+        ("supplier_name", "Supplier Name", "supplier_name"),
+        ("country", "Country", "country"),
+        ("risk_band", "Risk Band", "risk_band"),
+    ),
+)
+
+
+WAREHOUSE_HEALTH = Domain(
+    key="warehouse_health",
+    label="Warehouse Health",
+    relation="v_mart_warehouse_health",
+    date_column="",
+    metrics={
+        "positions": Metric(
+            "positions",
+            "Positions",
+            "sum(sku_store_positions)",
+            Additivity.FULL,
+            "count",
+            "SKU × store positions covered.",
+        ),
+        "stores": Metric(
+            "stores", "Stores", "sum(stores)", Additivity.FULL, "count", "Stores in scope."
+        ),
+        "inventory_value": Metric(
+            "inventory_value",
+            "Inventory Value",
+            "sum(inventory_value)",
+            Additivity.SEMI,
+            "currency",
+            "Stock at cost.",
+        ),
+        "excess_value": Metric(
+            "excess_value",
+            "Excess Value",
+            "sum(excess_value)",
+            Additivity.SEMI,
+            "currency",
+            "Capital tied up above the overstock threshold.",
+        ),
+        "stockout_positions": Metric(
+            "stockout_positions",
+            "Stockouts",
+            "sum(stockout_positions)",
+            Additivity.FULL,
+            "count",
+            "Positions at zero.",
+        ),
+        "at_risk_positions": Metric(
+            "at_risk_positions",
+            "At Risk",
+            "sum(at_risk_positions)",
+            Additivity.FULL,
+            "count",
+            "Positions that will run out before a replenishment can land.",
+        ),
+        "overstocked_positions": Metric(
+            "overstocked_positions",
+            "Overstocked",
+            "sum(overstocked_positions)",
+            Additivity.FULL,
+            "count",
+            "Positions above twelve weeks of cover.",
+        ),
+        "open_po_lines": Metric(
+            "open_po_lines",
+            "Open PO Lines",
+            "sum(open_po_lines)",
+            Additivity.FULL,
+            "count",
+            "Replenishment in flight.",
+        ),
+        "stockout_rate": Metric(
+            "stockout_rate",
+            "Stockout Rate",
+            "sum(stockout_positions)::double / nullif(sum(sku_store_positions), 0)",
+            Additivity.NON,
+            "rate",
+            "Recomputed from counts, so a large region does not get the same vote as a small one.",
+            ratio_of=("stockout_positions", "positions"),
+        ),
+        "excess_value_share": Metric(
+            "excess_value_share",
+            "Excess Share",
+            "sum(excess_value) / nullif(sum(inventory_value), 0)",
+            Additivity.NON,
+            "rate",
+            "Share of inventory value that is excess.",
+        ),
+        # The five component scores and the composite are position-weighted
+        # rather than averaged. At the mart's own grain (one row per region)
+        # the weighting is a no-op and the value is read exactly as computed;
+        # roll two regions together and only the weighted form is defensible.
+        "availability_score": Metric(
+            "availability_score",
+            "Availability",
+            "sum(availability_score * sku_store_positions) / nullif(sum(sku_store_positions), 0)",
+            Additivity.NON,
+            "score",
+            "Can a customer buy it? Driven by stockout rate.",
+        ),
+        "replenishment_score": Metric(
+            "replenishment_score",
+            "Replenishment",
+            "sum(replenishment_score * sku_store_positions) / nullif(sum(sku_store_positions), 0)",
+            Additivity.NON,
+            "score",
+            "Is supply keeping up? Driven by positions running out inside their lead time.",
+        ),
+        "capital_efficiency_score": Metric(
+            "capital_efficiency_score",
+            "Capital Efficiency",
+            "sum(capital_efficiency_score * sku_store_positions)"
+            " / nullif(sum(sku_store_positions), 0)",
+            Additivity.NON,
+            "score",
+            "How much stock is dead weight.",
+        ),
+        "assortment_score": Metric(
+            "assortment_score",
+            "Assortment",
+            "sum(assortment_score * sku_store_positions) / nullif(sum(sku_store_positions), 0)",
+            Additivity.NON,
+            "score",
+            "Breadth actually carried against breadth ranged.",
+        ),
+        "freshness_score": Metric(
+            "freshness_score",
+            "Freshness",
+            "sum(freshness_score * sku_store_positions) / nullif(sum(sku_store_positions), 0)",
+            Additivity.NON,
+            "score",
+            "How long stock has been sitting.",
+        ),
+        "health_score": Metric(
+            "health_score",
+            "Health Score",
+            "sum(health_score * sku_store_positions) / nullif(sum(sku_store_positions), 0)",
+            Additivity.NON,
+            "score",
+            "The weighted composite of the five components, 0–100. A single "
+            "number is a summary, not a diagnosis: it exists to rank regions "
+            "for attention, and the components say what to actually fix.",
+        ),
+        "avg_cover_days": Metric(
+            "avg_cover_days",
+            "Cover Days",
+            "sum(avg_cover_days * sku_store_positions) / nullif(sum(sku_store_positions), 0)",
+            Additivity.NON,
+            "days",
+            "Position-weighted days of supply.",
+        ),
+    },
+    dimensions=_dims(
+        ("region", "Region", "region"),
+        ("health_band", "Health Band", "health_band"),
+        ("position_date", "As Of", "position_date"),
+    ),
+)
+
+
 DOMAINS: dict[str, Domain] = {
     domain.key: domain
     for domain in (
@@ -907,6 +1550,11 @@ DOMAINS: dict[str, Domain] = {
         LIFECYCLE,
         CHURN,
         VIP,
+        PRODUCT_ABC,
+        INVENTORY_HEALTH,
+        REORDER,
+        SUPPLIER,
+        WAREHOUSE_HEALTH,
     )
 }
 

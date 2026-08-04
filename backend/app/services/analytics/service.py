@@ -46,6 +46,14 @@ DOMAIN_PERMISSIONS: dict[str, Permission] = {
     "lifecycle": Permission.ANALYTICS_CUSTOMER_READ,
     "churn": Permission.ANALYTICS_CUSTOMER_READ,
     "vip": Permission.ANALYTICS_CUSTOMER_READ,
+    # Inventory intelligence rides the inventory module for the same reason:
+    # a reorder suggestion without the supplier reliability behind it is a
+    # number to be overridden, and ABC without stock position is trivia.
+    "product_abc": Permission.ANALYTICS_INVENTORY_READ,
+    "inventory_health": Permission.ANALYTICS_INVENTORY_READ,
+    "reorder": Permission.ANALYTICS_INVENTORY_READ,
+    "supplier": Permission.ANALYTICS_INVENTORY_READ,
+    "warehouse_health": Permission.ANALYTICS_INVENTORY_READ,
 }
 
 DEFAULT_LOOKBACK_DAYS = 30
@@ -191,7 +199,8 @@ class AnalyticsService:
         """
         catalog: list[dict[str, Any]] = []
         for key, domain in DOMAINS.items():
-            if not authz.has(principal, DOMAIN_PERMISSIONS[key]):
+            permission = DOMAIN_PERMISSIONS.get(key)
+            if permission is None or not authz.has(principal, permission):
                 continue
             catalog.append(
                 {
@@ -222,5 +231,13 @@ class AnalyticsService:
                 f"unknown analytics domain '{domain_key}'",
                 hint=f"Available: {', '.join(sorted(DOMAINS))}",
             )
-        authz.require(principal, DOMAIN_PERMISSIONS[domain.key])
+        permission = DOMAIN_PERMISSIONS.get(domain.key)
+        if permission is None:
+            # Registering a domain without declaring who may read it is a
+            # programming error. Treat it as unreadable rather than open, and
+            # say so in the log — an ungoverned domain must never be the
+            # permissive case.
+            log.error("analytics.domain_without_permission", domain=domain.key)
+            raise NotFoundError(f"unknown analytics domain '{domain_key}'")
+        authz.require(principal, permission)
         return domain

@@ -53,13 +53,27 @@ test-integration: ## Integration tests (needs Docker)
 
 # ── Data platform ─────────────────────────────────────────────────────
 .PHONY: backfill
-backfill: ## Backfill a window: make backfill START=2026-06-01 END=2026-06-22
-	uv run python -m ingestion.cli backfill $(START) $(END)
+backfill: ## Backfill every source over a window: make backfill START=2026-06-01 END=2026-06-22
+	@for pair in $(ETL_SOURCES); do \
+		src=$${pair%%:*}; tbl=$${pair##*:}; \
+		echo "→ backfilling $$src.$$tbl"; \
+		uv run python -m ingestion.cli backfill $(START) $(END) --source $$src --table $$tbl || exit 1; \
+	done
+
+# Every source the warehouse models depend on. Expected file counts come from
+# each schema's own declaration — purchasing lands as one estate-wide file
+# rather than one per store, and overriding that on the command line
+# quarantines the lot.
+ETL_SOURCES := pos:sales inventory:positions purchasing:orders
 
 .PHONY: etl-demo
-etl-demo: ## Generate synthetic POS files and ingest them
+etl-demo: ## Generate synthetic source files and ingest every source
 	uv run python -m ingestion.cli generate --day 2026-07-21
-	uv run python -m ingestion.cli run --day 2026-07-21
+	@for pair in $(ETL_SOURCES); do \
+		src=$${pair%%:*}; tbl=$${pair##*:}; \
+		echo "→ ingesting $$src.$$tbl"; \
+		uv run python -m ingestion.cli run --source $$src --table $$tbl --day 2026-07-21 || exit 1; \
+	done
 
 .PHONY: warehouse
 warehouse: ## Build the dimensional warehouse (seeds, snapshots, models, tests)

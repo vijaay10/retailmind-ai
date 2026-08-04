@@ -25,7 +25,7 @@ from ingestion.core.duck import connect
 from ingestion.core.logging import configure_logging
 from ingestion.domain.schema import SourceSchema
 from ingestion.domain.window import Window
-from ingestion.generators import inventory_files
+from ingestion.generators import inventory_files, purchase_orders
 from ingestion.generators.pos_files import generate_day
 from ingestion.landing.writer import committed_partitions
 from ingestion.pipeline import IngestionPipeline, RunSummary
@@ -106,22 +106,33 @@ def generate(
     # Each day carries its own seed offset, so the series varies day to day
     # while staying reproducible for a given --seed. A flat series would make
     # trends, growth, and forecasts meaningless to demo against.
-    sales_rows = sales_files = position_rows = 0
+    sales_rows = sales_files = position_rows = order_rows = 0
     for offset in range(days):
         current = business_date - timedelta(days=days - 1 - offset)
         batch = generate_day(settings.inbox_dir("pos"), current, stores=stores, seed=seed + offset)
         positions = inventory_files.generate_day(
             settings.inbox_dir("inventory"), current, stores=stores, seed=seed + 600 + offset
         )
+        orders = purchase_orders.generate_day(
+            settings.inbox_dir("purchasing"),
+            current,
+            stores=stores,
+            seed=seed + 900 + offset,
+            # The horizon is the last day the warehouse knows about, so lines
+            # that would arrive later stay legitimately open.
+            as_of=business_date,
+        )
         sales_rows += batch.rows
         sales_files += len(batch.files)
         position_rows += positions.rows
+        order_rows += orders.rows
 
     first_day = business_date - timedelta(days=days - 1)
     span = business_date.isoformat() if days == 1 else f"{first_day} → {business_date}"
     typer.echo(f"generated {span} ({days} day(s) x {stores} stores)")
     typer.echo(f"  pos.sales:           {sales_rows:,} rows in {sales_files:,} files")
     typer.echo(f"  inventory.positions: {position_rows:,} rows")
+    typer.echo(f"  purchasing.orders:   {order_rows:,} rows")
 
 
 @app.command()

@@ -28,7 +28,7 @@ from ingestion.core.config import EtlSettings
 from ingestion.core.duck import connect
 from ingestion.domain.schema import SourceSchema
 from ingestion.domain.window import Window
-from ingestion.generators import inventory_files, pos_files
+from ingestion.generators import inventory_files, pos_files, purchase_orders
 from ingestion.pipeline import IngestionPipeline
 
 DBT_DIR = Path(__file__).resolve().parents[2] / "dbt"
@@ -76,13 +76,22 @@ def warehouse(tmp_path_factory: pytest.TempPathFactory) -> Iterator[duckdb.DuckD
     inventory_files.generate_day(
         settings.inbox_dir("inventory"), BUSINESS_DAY, stores=6, skus_per_store=20
     )
+    purchase_orders.generate_day(
+        settings.inbox_dir("purchasing"), BUSINESS_DAY, stores=6, lines=40, as_of=BUSINESS_DAY
+    )
 
     schema_root = Path(__file__).resolve().parents[2] / "ingestion/schemas"
     conn = connect(settings.warehouse_path)
-    for source, table in (("pos", "sales"), ("inventory", "positions")):
+    # Purchasing arrives as one file for the whole estate rather than one per
+    # store, so its completeness check counts a single unit.
+    for source, table, units in (
+        ("pos", "sales", 6),
+        ("inventory", "positions", 6),
+        ("purchasing", "orders", 1),
+    ):
         schema = SourceSchema.from_yaml(schema_root / source / f"{table}.yml")
         connector = CsvFileConnector(
-            schema=schema, settings=settings, connection=conn, expected_units=6
+            schema=schema, settings=settings, connection=conn, expected_units=units
         )
         summary = IngestionPipeline(connector=connector, settings=settings, connection=conn).run(
             Window.for_day(BUSINESS_DAY)

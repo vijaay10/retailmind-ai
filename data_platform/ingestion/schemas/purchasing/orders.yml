@@ -1,0 +1,104 @@
+# Purchase order lines — the replenishment feed (Analytics §7, schema SE-1).
+#
+# An accumulating-snapshot source: a PO line is created when ordered, updated
+# when confirmed, and updated again when received. The same natural key
+# therefore arrives repeatedly with a later `updated_at`, which is exactly what
+# the dedup tiebreaker is for.
+#
+# This feed is what makes lead time, supplier reliability, and inventory aging
+# computable. Without it those three questions have no honest answer.
+
+source: purchasing
+table: orders
+version: "1.0"
+
+natural_key: [po_number, line_no]
+event_time_column: order_ts
+default_timezone: UTC
+dedupe_tiebreaker: updated_at
+
+columns:
+  - name: po_number
+    type: string
+    class: business_key
+    normalize: upper
+
+  - name: line_no
+    type: integer
+    class: business_key
+
+  - name: supplier_id
+    type: string
+    class: business_key
+    normalize: upper
+
+  - name: sku
+    type: string
+    class: business_key
+    normalize: upper
+
+  - name: store_id
+    type: string
+    class: business_key
+    normalize: upper
+
+  - name: order_ts
+    type: timestamp
+    class: event_time
+    formats: ["%Y-%m-%d %H:%M:%S"]
+
+  - name: updated_at
+    type: timestamp
+    class: descriptor
+    required: false
+    formats: ["%Y-%m-%d %H:%M:%S"]
+
+  # Promise and receipt drive OTIF. A NULL receipt means "still open", which is
+  # a different thing from "never arrived" — the fact keeps them distinct.
+  - name: promise_date
+    type: date
+    class: dimension
+    formats: ["%Y-%m-%d"]
+
+  - name: receipt_date
+    type: date
+    class: dimension
+    required: false
+    formats: ["%Y-%m-%d"]
+
+  - name: ordered_qty
+    type: decimal
+    class: measure
+    min: 0
+    max: 1000000
+
+  - name: received_qty
+    type: decimal
+    class: measure
+    required: false
+    min: 0
+    max: 1000000
+
+  - name: unit_cost
+    type: decimal
+    class: measure
+    currency_column: currency
+    min: 0
+    max: 100000
+
+  - name: currency
+    type: string
+    class: dimension
+    normalize: upper
+    enum: [USD, EUR, GBP, CAD, MXN]
+
+  - name: po_status
+    type: string
+    class: dimension
+    normalize: lower
+    enum: [open, confirmed, received, cancelled]
+
+metadata:
+  owner: data-platform
+  sla: "purchase orders available by 04:00 tenant-local"
+  expected_units: 1

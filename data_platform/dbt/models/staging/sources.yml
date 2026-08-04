@@ -51,3 +51,20 @@ sources:
             data_tests: [not_null]
           - name: business_date
             data_tests: [not_null]
+
+      - name: purchasing__orders
+        description: >
+          Purchase order lines — an accumulating snapshot. The same line
+          arrives repeatedly as it moves from ordered to received, which is
+          what makes lead time, supplier reliability, and inventory aging
+          computable.
+        loaded_at_field: business_date
+        columns:
+          - name: po_number
+            data_tests: [not_null]
+          - name: supplier_id
+            data_tests: [not_null]
+          - name: sku
+            data_tests: [not_null]
+          - name: ordered_qty
+            data_tests: [not_null]

@@ -37,6 +37,7 @@ from app.services.analytics.service import AnalyticsService
 from app.services.auth.service import AuthService
 from app.services.customers.service import CustomerIntelligenceService
 from app.services.dashboard.service import ExecutiveDashboardService
+from app.services.inventory.service import InventoryIntelligenceService
 from app.services.shared import authz
 from app.services.shared.uow import UnitOfWork
 
@@ -190,3 +191,17 @@ def get_customer_service(analytics: AnalyticsServiceDep) -> CustomerIntelligence
 
 
 CustomerServiceDep = Annotated[CustomerIntelligenceService, Depends(get_customer_service)]
+
+
+def get_inventory_service(analytics: AnalyticsServiceDep) -> InventoryIntelligenceService:
+    """Inventory intelligence over the governed analytics registry.
+
+    Stateless. Reorder arithmetic lives in the warehouse, not here, so the
+    same numbers appear whether they are reached through this API, a dbt
+    docs page, or a direct query — which is what makes a buyer's override
+    reproducible instead of a disagreement with a black box.
+    """
+    return InventoryIntelligenceService(analytics)
+
+
+InventoryServiceDep = Annotated[InventoryIntelligenceService, Depends(get_inventory_service)]

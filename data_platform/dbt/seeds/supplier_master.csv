@@ -1,0 +1,6 @@
+supplier_id,supplier_name,category_focus,country,payment_terms,contract_lead_time_days,contract_otif_target
+SUP-001,Northpeak Supply,apparel,US,net30,10,0.97
+SUP-002,Meridian Trading,apparel,VN,net45,21,0.88
+SUP-003,Harbourline Goods,accessories,CN,net60,28,0.79
+SUP-004,Cascade Outfitters,footwear,PT,net30,14,0.94
+SUP-005,Ridgeway Textiles,basics,IN,net45,18,0.85
