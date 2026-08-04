@@ -37,6 +37,7 @@ from app.services.analytics.service import AnalyticsService
 from app.services.auth.service import AuthService
 from app.services.customers.service import CustomerIntelligenceService
 from app.services.dashboard.service import ExecutiveDashboardService
+from app.services.forecasting.service import ForecastingService
 from app.services.inventory.service import InventoryIntelligenceService
 from app.services.shared import authz
 from app.services.shared.uow import UnitOfWork
@@ -205,3 +206,16 @@ def get_inventory_service(analytics: AnalyticsServiceDep) -> InventoryIntelligen
 
 
 InventoryServiceDep = Annotated[InventoryIntelligenceService, Depends(get_inventory_service)]
+
+
+def get_forecast_service(analytics: AnalyticsServiceDep) -> ForecastingService:
+    """Forecast serving over the governed analytics registry.
+
+    Reads published forecasts; never fits a model. Training runs as a batch
+    job in ml/forecasting, so the API image carries no numerical stack and a
+    retrained model reaches users without a deploy.
+    """
+    return ForecastingService(analytics)
+
+
+ForecastServiceDep = Annotated[ForecastingService, Depends(get_forecast_service)]

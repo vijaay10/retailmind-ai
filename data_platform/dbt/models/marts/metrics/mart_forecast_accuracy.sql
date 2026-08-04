@@ -17,7 +17,17 @@
 select
     model_name,
     model_class,
-    count(*) as forecast_days,
+    produced_by,
+
+    /*
+        A forward forecast for a day that has not happened has no actual to be
+        scored against, and counting it as a "forecast day" would quietly
+        dilute every rate below. Pending rows are counted separately, because
+        "we have 14 predictions outstanding" is useful and "our sample is 14
+        larger than it really is" is not.
+    */
+    count(*) filter (where actual_revenue is not null) as forecast_days,
+    count(*) filter (where actual_revenue is null) as pending_days,
     min(business_date) as first_forecast_date,
     max(business_date) as last_forecast_date,
 
@@ -35,9 +45,10 @@ select
     ) as bias,
 
     round(
-        count(*) filter (where within_interval)::double / nullif(count(*), 0), 4
+        count(*) filter (where within_interval)::double
+        / nullif(count(*) filter (where actual_revenue is not null), 0), 4
     ) as interval_coverage,
 
     round(avg(absolute_error), 2) as mean_absolute_error
 from {{ ref('fct_forecast') }}
-group by 1, 2
+group by 1, 2, 3

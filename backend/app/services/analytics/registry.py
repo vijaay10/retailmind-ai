@@ -1535,6 +1535,243 @@ WAREHOUSE_HEALTH = Domain(
 )
 
 
+# ── Forecasting (Analytics M7, ARCH §28) ─────────────────────────────
+#
+# Forecast rows are *published output*, not a recomputation surface. The
+# registry therefore exposes them at their stored grain and aggregates only
+# where aggregation is meaningful: summing a point forecast across days is
+# legitimate (a fortnight's expected revenue), while averaging a WAPE across
+# models is not, and the additivity flags say which is which.
+
+
+FORECAST = Domain(
+    key="forecast",
+    label="Forecasts",
+    relation="v_forecast_predictions",
+    # No implicit date window. The default lookback exists to stop an
+    # unbounded scan of history; applied here it would do the opposite and
+    # hide every forecast beyond today — which is all of them. The table is
+    # bounded by the horizon, so there is nothing to guard against.
+    date_column="",
+    metrics={
+        "forecast": Metric(
+            "forecast",
+            "Forecast",
+            "sum(yhat)",
+            Additivity.FULL,
+            "mixed",
+            "Point forecast. Additive across days and series within one "
+            "target — a fortnight's expected revenue is the sum of its days.",
+        ),
+        "forecast_lower": Metric(
+            "forecast_lower",
+            "Lower Bound",
+            "sum(yhat_lower)",
+            Additivity.FULL,
+            "mixed",
+            "Lower edge of the prediction interval. Summing bounds across "
+            "days is conservative rather than exact: independent errors "
+            "partially cancel, so the summed band is wider than the true one.",
+        ),
+        "forecast_upper": Metric(
+            "forecast_upper",
+            "Upper Bound",
+            "sum(yhat_upper)",
+            Additivity.FULL,
+            "mixed",
+            "Upper edge of the prediction interval.",
+        ),
+        "horizons": Metric(
+            "horizons",
+            "Horizons",
+            "count(*)",
+            Additivity.FULL,
+            "count",
+            "Forecast rows in scope.",
+        ),
+        "series": Metric(
+            "series",
+            "Series",
+            "count(distinct series_key)",
+            Additivity.NON,
+            "count",
+            "Distinct series forecast.",
+        ),
+        "relative_interval_width": Metric(
+            "relative_interval_width",
+            "Interval Width",
+            "sum(yhat_upper - yhat_lower) / nullif(sum(abs(yhat)), 0)",
+            Additivity.NON,
+            "ratio",
+            "Band width relative to the forecast. The number that says how "
+            "much to trust one: 100 ± 8 and 100 ± 90 are not the same claim.",
+        ),
+        "model_wape": Metric(
+            "model_wape",
+            "Model WAPE",
+            "max(model_wape)",
+            Additivity.NON,
+            "rate",
+            "Out-of-sample error of the model that produced these rows. Read "
+            "at model grain, never averaged across models — a mean of two "
+            "models' WAPE describes neither.",
+        ),
+        "model_mase": Metric(
+            "model_mase",
+            "Model MASE",
+            "max(model_mase)",
+            Additivity.NON,
+            "ratio",
+            "Error scaled against seasonal naive. Below 1.0 the model beats "
+            "assuming next week looks like last week; at or above it, the "
+            "model has earned nothing.",
+        ),
+    },
+    dimensions=_dims(
+        ("target", "Target", "target"),
+        ("series_key", "Series", "series_key"),
+        ("model_name", "Model", "model_name"),
+        ("model_class", "Model Class", "model_class"),
+        ("horizon", "Horizon", "horizon"),
+        ("business_date", "Date", "business_date"),
+        ("origin_date", "Forecast Origin", "origin_date"),
+    ),
+)
+
+
+FORECAST_ACCURACY = Domain(
+    key="forecast_accuracy",
+    label="Forecast Accuracy",
+    relation="v_mart_forecast_accuracy",
+    date_column="",
+    metrics={
+        "wape": Metric(
+            "wape",
+            "WAPE",
+            "max(wape)",
+            Additivity.NON,
+            "rate",
+            "Weighted absolute percentage error — the headline. Read at model "
+            "grain: pooling two models' errors produces a number describing a "
+            "model nobody is running.",
+        ),
+        "mape": Metric(
+            "mape",
+            "MAPE",
+            "max(mape)",
+            Additivity.NON,
+            "rate",
+            "The familiar number, and the least reliable: it divides by the "
+            "actual, so one quiet day can dominate the headline.",
+        ),
+        "bias": Metric(
+            "bias",
+            "Bias",
+            "max(bias)",
+            Additivity.NON,
+            "rate",
+            "Signed error. A model with good WAPE and strong bias is wrong in "
+            "a consistent direction, which for replenishment compounds into "
+            "working capital instead of averaging out.",
+        ),
+        "interval_coverage": Metric(
+            "interval_coverage",
+            "Interval Coverage",
+            "max(interval_coverage)",
+            Additivity.NON,
+            "rate",
+            "Share of actuals that fell inside the band. Compared against the "
+            "band's nominal level: one claiming 80% and delivering 50% is "
+            "miscalibrated, and planning against it is worse than planning "
+            "against a point estimate known to be uncertain.",
+        ),
+        "mean_absolute_error": Metric(
+            "mean_absolute_error",
+            "MAE",
+            "max(mean_absolute_error)",
+            Additivity.NON,
+            "currency",
+            "Mean absolute error in currency.",
+        ),
+        "forecast_days": Metric(
+            "forecast_days",
+            "Scored Days",
+            "sum(forecast_days)",
+            Additivity.FULL,
+            "count",
+            "Days with an actual to score against — the evidence behind every rate above.",
+        ),
+        "pending_days": Metric(
+            "pending_days",
+            "Pending Days",
+            "sum(pending_days)",
+            Additivity.FULL,
+            "count",
+            "Forecasts for days that have not happened yet. Counted apart so "
+            "they cannot dilute the accuracy sample.",
+        ),
+    },
+    dimensions=_dims(
+        ("model_name", "Model", "model_name"),
+        ("model_class", "Model Class", "model_class"),
+        ("produced_by", "Produced By", "produced_by"),
+    ),
+)
+
+
+FORECAST_EXPLANATION = Domain(
+    key="forecast_explanation",
+    label="Forecast Explanations",
+    relation="v_forecast_explanations",
+    date_column="",  # forward-looking, and bounded by the horizon — see FORECAST
+    metrics={
+        "effect": Metric(
+            "effect",
+            "Effect",
+            "sum(effect)",
+            Additivity.FULL,
+            "mixed",
+            "Signed contribution to the forecast, in the series' own units. "
+            "Additive by construction: baseline plus the effects reconstructs "
+            "the point forecast exactly.",
+        ),
+        "effect_magnitude": Metric(
+            "effect_magnitude",
+            "Effect Size",
+            "sum(effect_magnitude)",
+            Additivity.FULL,
+            "mixed",
+            "Absolute contribution — how much a feature moved the number, regardless of direction.",
+        ),
+        "baseline": Metric(
+            "baseline",
+            "Baseline",
+            "max(baseline)",
+            Additivity.NON,
+            "mixed",
+            "What the model predicts with every feature at its training mean "
+            "— the reference the contributions move away from.",
+        ),
+        "features": Metric(
+            "features",
+            "Features",
+            "count(*)",
+            Additivity.FULL,
+            "count",
+            "Contributions in scope.",
+        ),
+    },
+    dimensions=_dims(
+        ("target", "Target", "target"),
+        ("series_key", "Series", "series_key"),
+        ("feature", "Feature", "feature"),
+        ("direction", "Direction", "direction"),
+        ("horizon", "Horizon", "horizon"),
+        ("business_date", "Date", "business_date"),
+    ),
+)
+
+
 DOMAINS: dict[str, Domain] = {
     domain.key: domain
     for domain in (
@@ -1555,6 +1792,9 @@ DOMAINS: dict[str, Domain] = {
         REORDER,
         SUPPLIER,
         WAREHOUSE_HEALTH,
+        FORECAST,
+        FORECAST_ACCURACY,
+        FORECAST_EXPLANATION,
     )
 }
 

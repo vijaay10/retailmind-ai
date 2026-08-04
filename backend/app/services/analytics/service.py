@@ -54,6 +54,14 @@ DOMAIN_PERMISSIONS: dict[str, Permission] = {
     "reorder": Permission.ANALYTICS_INVENTORY_READ,
     "supplier": Permission.ANALYTICS_INVENTORY_READ,
     "warehouse_health": Permission.ANALYTICS_INVENTORY_READ,
+    # Forecasts have their own permission because they are a different kind of
+    # claim: every other domain reports what happened, and these report what
+    # somebody's model expects. The accuracy scoreboard rides the same
+    # permission deliberately — a role that can read a forecast must be able
+    # to see how wrong that forecast has been.
+    "forecast": Permission.FORECASTS_READ,
+    "forecast_accuracy": Permission.FORECASTS_READ,
+    "forecast_explanation": Permission.FORECASTS_READ,
 }
 
 DEFAULT_LOOKBACK_DAYS = 30

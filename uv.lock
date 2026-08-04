@@ -20,6 +20,7 @@ resolution-markers = [
 members = [
     "retailmind-backend",
     "retailmind-etl",
+    "retailmind-ml",
     "retailmind-workspace",
 ]
 
@@ -3612,6 +3613,25 @@ requires-dist = [
     { name = "typer", specifier = ">=0.12" },
 ]
 provides-extras = ["airflow", "generators"]
+
+[[package]]
+name = "retailmind-ml"
+version = "0.0.1"
+source = { editable = "ml" }
+dependencies = [
+    { name = "duckdb" },
+    { name = "numpy" },
+    { name = "structlog" },
+    { name = "typer" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "duckdb", specifier = ">=1.1" },
+    { name = "numpy", specifier = ">=2.1" },
+    { name = "structlog", specifier = ">=24.4" },
+    { name = "typer", specifier = ">=0.12" },
+]
 
 [[package]]
 name = "retailmind-workspace"

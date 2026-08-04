@@ -1,0 +1,25 @@
+[project]
+name = "retailmind-ml"
+version = "0.0.1"
+description = "RetailMind AI forecasting — features, models, backtesting, and the model registry"
+requires-python = ">=3.12"
+dependencies = [
+    # Numerics only. The models here are linear and closed-form by choice, so
+    # the package carries no heavyweight ML runtime — see forecasting/models.
+    "numpy>=2.1",
+    # Reads series from and writes forecasts back to the warehouse.
+    "duckdb>=1.1",
+    "structlog>=24.4",
+    "typer>=0.12",
+]
+
+[project.scripts]
+# Operator entrypoint: `retailmind-forecast train`
+retailmind-forecast = "forecasting.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["forecasting"]

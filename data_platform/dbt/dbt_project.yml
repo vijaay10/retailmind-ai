@@ -43,4 +43,19 @@ seeds:
     +schema: staging
     # calendar_454.csv, holiday_calendar.csv, channel_map.csv land in S2
 
+# The forecasting job (ml/) writes into a schema dbt reads but does not own.
+# Creating the table here rather than in the training job means the warehouse
+# builds on a clone that has never been trained against: without it, the
+# fct_forecast source would be missing and every downstream model would fail
+# for a reason that has nothing to do with the warehouse.
+#
+# The DDL is deliberately duplicated from forecasting/warehouse.py rather than
+# imported — dbt cannot import Python here, and a create-if-not-exists that
+# disagrees with the writer is caught immediately by the insert failing.
+on-run-start:
+  - "create schema if not exists analytics_ml"
+  - "{{ ensure_forecast_predictions() }}"
+  - "{{ ensure_forecast_runs() }}"
+  - "{{ ensure_forecast_explanations() }}"
+
 # TODO(S2): on-run-end hooks → parse artifacts into META (ETL design §19)

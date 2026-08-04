@@ -68,3 +68,25 @@ sources:
             data_tests: [not_null]
           - name: ordered_qty
             data_tests: [not_null]
+
+  - name: ml
+    description: >
+      Output of the forecasting job (ml/forecasting). Written by Python, read
+      by dbt, owned by neither exclusively — which is why the table is created
+      by an on-run-start hook rather than by whichever ran first.
+    schema: analytics_ml
+    tables:
+      - name: forecast_predictions
+        description: >
+          Forward forecasts, one row per target × series × horizon. Replaced
+          wholesale per target on each run, so re-running the trainer is
+          idempotent rather than additive.
+      - name: forecast_runs
+        description: >
+          One row per trained target per run: the champion, its scorecard, and
+          the promotion decision with the reason it was made.
+      - name: forecast_explanations
+        description: >
+          Per-feature contributions behind individual forecasts. Only the
+          largest movers are stored — the tail of a linear explanation is
+          noise around zero and would triple the table to say nothing.

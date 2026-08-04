@@ -97,6 +97,12 @@ warehouse: ## Build the dimensional warehouse (seeds, snapshots, models, tests)
 	cd data_platform/dbt && uv run dbt snapshot --profiles-dir .
 	cd data_platform/dbt && uv run dbt build --profiles-dir .
 
+.PHONY: forecast
+forecast: ## Train forecast models and publish predictions (run after `make warehouse`)
+	uv run retailmind-forecast train
+	@echo "→ rebuilding so dbt unions the forecasts into fct_forecast"
+	cd data_platform/dbt && uv run dbt build --profiles-dir . --select fct_forecast+
+
 .PHONY: warehouse-docs
 warehouse-docs: ## Generate and serve the dbt documentation site
 	cd data_platform/dbt && uv run dbt docs generate --profiles-dir .

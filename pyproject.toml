@@ -8,7 +8,7 @@ description = "RetailMind AI monorepo workspace (tooling root — not an install
 requires-python = ">=3.12"
 
 [tool.uv.workspace]
-members = ["backend", "data_platform"]
+members = ["backend", "data_platform", "ml"]
 
 [dependency-groups]
 dev = [
@@ -55,7 +55,7 @@ exclude = ["notebooks"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["backend/tests", "data_platform/tests"]
+testpaths = ["backend/tests", "data_platform/tests", "ml/tests"]
 addopts = "-ra --strict-markers --import-mode=importlib"
 markers = [
     "integration: requires Docker services (testcontainers)",

@@ -24,9 +24,19 @@
     widen when the series is genuinely volatile, which is the property that
     makes an interval worth showing.
 
-    When a better model lands (ARCH §22's LightGBM/Prophet portfolio), it
-    writes into this same table with a different `model_name`, and the
-    scoreboard compares them. Nothing downstream changes.
+    The trained models land through the union at the bottom of this file: the
+    forecasting job (ml/forecasting) writes to analytics_ml.forecast_predictions
+    with its own `model_name`, and the scoreboard compares them on identical
+    terms. Nothing downstream changes.
+
+    **The two halves are scored differently, and the difference is honest.**
+    The baseline below is evaluated in-sample-but-causally — each day's
+    forecast uses only prior observations — which is why it can be computed in
+    one pass over history. The model rows are *forward* forecasts for dates
+    that have not happened yet, so they carry NULL actuals until the day
+    arrives and the next build joins one in. A NULL actual is the correct
+    value for a prediction about Thursday made on Monday, and filling it with
+    anything would fabricate an accuracy number for a day nobody has lived.
 */
 
 with daily as (
@@ -113,6 +123,13 @@ select
     business_date,
     'seasonal_naive_w4' as model_name,
     'baseline' as model_class,
+    -- Two implementations of "seasonal naive" exist: this SQL one and the
+    -- Python one in ml/forecasting. They share a name because they are the
+    -- same idea, and they are *not* the same code — different lookback
+    -- handling gives different numbers. Grading them in one row would
+    -- attribute one implementation's accuracy to the other.
+    'warehouse_sql' as produced_by,
+    1 as horizon,
     day_of_week,
     observations as training_observations,
 
@@ -138,3 +155,51 @@ select
 
     current_timestamp as _loaded_at
 from scored
+
+union all
+
+/*
+    Trained-model forecasts, produced by ml/forecasting and read back here so
+    that every model — baseline or otherwise — reaches the accuracy scoreboard
+    through exactly one path. A second scoreboard reading a second table is how
+    two teams end up quoting different accuracy for the same model.
+
+    Only revenue rows join this fact: it is a revenue-and-units grain, and the
+    demand, inventory, and profit forecasts live at grains this table cannot
+    represent. They are served from the semantic view over the predictions
+    table directly.
+*/
+select
+    cast(strftime(p.business_date, '%Y%m%d') as integer) as date_key,
+    p.business_date,
+    p.model_name,
+    p.model_class,
+    'ml_pipeline' as produced_by,
+    p.horizon,
+    cast(extract(dayofweek from p.business_date) as bigint) as day_of_week,
+    null as training_observations,
+
+    p.yhat as yhat_revenue,
+    p.yhat_lower as yhat_revenue_lower,
+    p.yhat_upper as yhat_revenue_upper,
+    null as yhat_units,
+
+    -- Joined where the day has since happened, NULL where it has not. This is
+    -- what lets the same row be a forecast today and a scored forecast next
+    -- week without being rewritten.
+    a.net_revenue as actual_revenue,
+    a.units_sold as actual_units,
+    abs(a.net_revenue - p.yhat) as absolute_error,
+    round(abs(a.net_revenue - p.yhat) / nullif(abs(a.net_revenue), 0), 6)
+        as absolute_percentage_error,
+
+    (a.net_revenue between p.yhat_lower and p.yhat_upper) as within_interval,
+
+    current_timestamp as _loaded_at
+from {{ source('ml', 'forecast_predictions') }} p
+left join (
+    select business_date, sum(net_amount) as net_revenue, sum(quantity) as units_sold
+    from {{ ref('fct_sales') }}
+    group by 1
+) a on a.business_date = p.business_date
+where p.target = 'revenue'
