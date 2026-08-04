@@ -54,25 +54,41 @@ test-integration: ## Integration tests (needs Docker)
 # ── Data platform ─────────────────────────────────────────────────────
 .PHONY: backfill
 backfill: ## Backfill every source over a window: make backfill START=2026-06-01 END=2026-06-22
-	@for pair in $(ETL_SOURCES); do \
-		src=$${pair%%:*}; tbl=$${pair##*:}; \
-		echo "→ backfilling $$src.$$tbl"; \
-		uv run python -m ingestion.cli backfill $(START) $(END) --source $$src --table $$tbl || exit 1; \
+	@for pair in $(PER_STORE_SOURCES); do \
+		echo "→ backfilling $${pair%%:*}.$${pair##*:}"; \
+		uv run python -m ingestion.cli backfill $(START) $(END) \
+			--source $${pair%%:*} --table $${pair##*:} \
+			--expected-stores $(RM_DEMO_STORES) || exit 1; \
+	done
+	@for pair in $(ESTATE_SOURCES); do \
+		echo "→ backfilling $${pair%%:*}.$${pair##*:}"; \
+		uv run python -m ingestion.cli backfill $(START) $(END) \
+			--source $${pair%%:*} --table $${pair##*:} || exit 1; \
 	done
 
-# Every source the warehouse models depend on. Expected file counts come from
-# each schema's own declaration — purchasing lands as one estate-wide file
-# rather than one per store, and overriding that on the command line
-# quarantines the lot.
-ETL_SOURCES := pos:sales inventory:positions purchasing:orders
+# The demo estate is smaller than the production one the schemas declare, so
+# completeness has to be told how many stores to expect. The split below is
+# not cosmetic: per-store sources land one file per store and must be checked
+# against the estate size, while purchasing lands a single file for the whole
+# chain. Passing the store count to that one quarantines every partition for
+# arriving 39 files short.
+RM_DEMO_STORES ?= 40
+RM_DEMO_DAY    ?= 2026-07-21
+PER_STORE_SOURCES := pos:sales inventory:positions
+ESTATE_SOURCES    := purchasing:orders
 
 .PHONY: etl-demo
 etl-demo: ## Generate synthetic source files and ingest every source
-	uv run python -m ingestion.cli generate --day 2026-07-21
-	@for pair in $(ETL_SOURCES); do \
-		src=$${pair%%:*}; tbl=$${pair##*:}; \
-		echo "→ ingesting $$src.$$tbl"; \
-		uv run python -m ingestion.cli run --source $$src --table $$tbl --day 2026-07-21 || exit 1; \
+	uv run python -m ingestion.cli generate --day $(RM_DEMO_DAY) --stores $(RM_DEMO_STORES)
+	@for pair in $(PER_STORE_SOURCES); do \
+		echo "→ ingesting $${pair%%:*}.$${pair##*:}"; \
+		uv run python -m ingestion.cli run --source $${pair%%:*} --table $${pair##*:} \
+			--day $(RM_DEMO_DAY) --expected-stores $(RM_DEMO_STORES) || exit 1; \
+	done
+	@for pair in $(ESTATE_SOURCES); do \
+		echo "→ ingesting $${pair%%:*}.$${pair##*:}"; \
+		uv run python -m ingestion.cli run --source $${pair%%:*} --table $${pair##*:} \
+			--day $(RM_DEMO_DAY) || exit 1; \
 	done
 
 .PHONY: warehouse
