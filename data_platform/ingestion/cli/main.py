@@ -25,7 +25,7 @@ from ingestion.core.duck import connect
 from ingestion.core.logging import configure_logging
 from ingestion.domain.schema import SourceSchema
 from ingestion.domain.window import Window
-from ingestion.generators import inventory_files, purchase_orders
+from ingestion.generators import fulfilment, inventory_files, purchase_orders, weather
 from ingestion.generators.pos_files import generate_day
 from ingestion.landing.writer import committed_partitions
 from ingestion.pipeline import IngestionPipeline, RunSummary
@@ -107,9 +107,20 @@ def generate(
     # while staying reproducible for a given --seed. A flat series would make
     # trends, growth, and forecasts meaningless to demo against.
     sales_rows = sales_files = position_rows = order_rows = 0
+    weather_rows = delivery_rows = 0
     for offset in range(days):
         current = business_date - timedelta(days=days - 1 - offset)
-        batch = generate_day(settings.inbox_dir("pos"), current, stores=stores, seed=seed + offset)
+        # history_start/end let the POS generator apply the shared incident
+        # calendar: the same storm that suppresses transactions here shows up
+        # as a severe flag in the weather feed.
+        batch = generate_day(
+            settings.inbox_dir("pos"),
+            current,
+            stores=stores,
+            seed=seed + offset,
+            history_start=business_date - timedelta(days=days - 1),
+            history_end=business_date,
+        )
         positions = inventory_files.generate_day(
             settings.inbox_dir("inventory"), current, stores=stores, seed=seed + 600 + offset
         )
@@ -122,10 +133,25 @@ def generate(
             # that would arrive later stay legitimately open.
             as_of=business_date,
         )
+        observations = weather.generate_day(
+            settings.inbox_dir("weather"),
+            current,
+            seed=seed + 41 + offset,
+            history_end=business_date,
+        )
+        deliveries = fulfilment.generate_day(
+            settings.inbox_dir("fulfilment"),
+            current,
+            stores=stores,
+            seed=seed + 55 + offset,
+            history_end=business_date,
+        )
         sales_rows += batch.rows
         sales_files += len(batch.files)
         position_rows += positions.rows
         order_rows += orders.rows
+        weather_rows += observations.rows
+        delivery_rows += deliveries.rows
 
     first_day = business_date - timedelta(days=days - 1)
     span = business_date.isoformat() if days == 1 else f"{first_day} → {business_date}"
@@ -133,6 +159,8 @@ def generate(
     typer.echo(f"  pos.sales:           {sales_rows:,} rows in {sales_files:,} files")
     typer.echo(f"  inventory.positions: {position_rows:,} rows")
     typer.echo(f"  purchasing.orders:   {order_rows:,} rows")
+    typer.echo(f"  weather.observations:{weather_rows:,} rows")
+    typer.echo(f"  fulfilment.deliveries: {delivery_rows:,} rows")
 
 
 @app.command()

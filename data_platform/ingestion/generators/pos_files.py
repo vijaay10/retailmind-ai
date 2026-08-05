@@ -30,6 +30,7 @@ from pathlib import Path
 import structlog
 
 from ingestion.generators.customers import build_population, buyers_for_day
+from ingestion.generators.shocks import region_for_store, shocks_for, traffic_multiplier
 
 log = structlog.get_logger(__name__)
 
@@ -143,20 +144,34 @@ def generate_day(
     written: list[Path] = []
     total = planted_rejects = planted_duplicates = 0
 
+    incidents = shocks_for(history_end or business_day)
+    suppressed = 0
+
     for index in range(1, stores + 1):
         store_id = f"S{2000 + index}"
+        region = region_for_store(index)
+
+        # A planted incident suppresses *transactions*, not transaction value.
+        # Weather keeps people at home; it does not make the ones who came
+        # spend less. Expressing it as fewer lines rather than smaller lines
+        # is what makes the drop show up as a volume effect in the
+        # mix-versus-rate decomposition, which is the diagnostic that matters.
+        keep = traffic_multiplier(incidents, business_day, region)
+        lines_today = round(lines_per_store * keep)
+        suppressed += lines_per_store - lines_today
+
         rows = []
-        for line in range(lines_per_store):
+        for line in range(lines_today):
             owner = line_owners.pop() if line_owners else ""
             rows.append(_sale_row(rng, store_id, business_day, line, owner))
 
-        if plant_bad_rows and index == 1:
+        if plant_bad_rows and index == 1 and rows:
             # One unkeyed row and one uncastable measure — the reject path.
             rows.append({**rows[0], "order_id": ""})
             rows.append({**rows[1], "order_id": "POS-BAD-001", "quantity": "abc"})
             planted_rejects += 2
 
-        if plant_bad_rows and index == 2:
+        if plant_bad_rows and index == 2 and len(rows) > 1:
             # A re-sent line with a later updated_at — the dedup path.
             duplicate = {
                 **rows[0],
@@ -180,6 +195,7 @@ def generate_day(
         business_day=business_day.isoformat(),
         files=len(written),
         rows=total,
+        suppressed_by_incidents=suppressed,
         planted_rejects=planted_rejects,
         planted_duplicates=planted_duplicates,
     )

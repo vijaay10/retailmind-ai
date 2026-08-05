@@ -1772,6 +1772,292 @@ FORECAST_EXPLANATION = Domain(
 )
 
 
+# ── Root cause analysis (Analytics §9) ───────────────────────────────
+#
+# Two relations and one shape. The slice domain is *unpivoted*: one row per
+# (slice_type, slice_value, day), so a single query answers "how did every cut
+# of the business move" and the decomposition code never learns the difference
+# between a region and a category. The factor domain carries the operational
+# signals that might explain a move, at region-day grain.
+
+
+RCA_SLICE = Domain(
+    key="rca_slice",
+    label="RCA Slices",
+    relation="v_mart_rca_slice_daily",
+    date_column="business_date",
+    metrics={
+        "net_revenue": Metric(
+            "net_revenue",
+            "Net Revenue",
+            "sum(net_revenue)",
+            Additivity.FULL,
+            "currency",
+            "Revenue net of discounts and returns — the metric decompositions run on.",
+        ),
+        "gross_revenue": Metric(
+            "gross_revenue",
+            "Gross Revenue",
+            "sum(gross_revenue)",
+            Additivity.FULL,
+            "currency",
+            "Revenue before discounts.",
+        ),
+        "margin_amount": Metric(
+            "margin_amount",
+            "Margin",
+            "sum(margin_amount)",
+            Additivity.FULL,
+            "currency",
+            "Gross margin.",
+        ),
+        "units_sold": Metric(
+            "units_sold",
+            "Units",
+            "sum(units_sold)",
+            Additivity.FULL,
+            "units",
+            "Net units.",
+        ),
+        "orders": Metric(
+            "orders",
+            "Orders",
+            "sum(orders)",
+            Additivity.NON,
+            "count",
+            "Transaction count — the volume half of the volume-versus-rate "
+            "split. Summed across days within a slice, never across slices: a "
+            "basket spanning two categories belongs to both.",
+        ),
+        "return_amount": Metric(
+            "return_amount",
+            "Returned Value",
+            "sum(return_amount)",
+            Additivity.FULL,
+            "currency",
+            "Value of goods returned, carried separately from net revenue "
+            "so that 'sales fell' and 'returns rose' stay distinguishable.",
+        ),
+        "return_units": Metric(
+            "return_units",
+            "Returned Units",
+            "sum(return_units)",
+            Additivity.FULL,
+            "units",
+            "Units returned.",
+        ),
+        "return_rate": Metric(
+            "return_rate",
+            "Return Rate",
+            "sum(return_amount) / nullif(sum(net_revenue) + sum(return_amount), 0)",
+            Additivity.NON,
+            "rate",
+            "Returned value against gross sales, recomputed at grain.",
+            ratio_of=("return_amount", "net_revenue"),
+        ),
+        "aov": Metric(
+            "aov",
+            "Average Order Value",
+            "sum(net_revenue) / nullif(sum(orders), 0)",
+            Additivity.NON,
+            "currency",
+            "The rate half of the volume-versus-rate split.",
+            ratio_of=("net_revenue", "orders"),
+        ),
+    },
+    dimensions=_dims(
+        ("slice_type", "Cut", "slice_type"),
+        ("slice_value", "Slice", "slice_value"),
+        ("business_date", "Date", "business_date"),
+    ),
+)
+
+
+RCA_FACTOR = Domain(
+    key="rca_factor",
+    label="RCA Factors",
+    relation="v_mart_rca_factor_daily",
+    date_column="business_date",
+    metrics={
+        "stockout_rate": Metric(
+            "stockout_rate",
+            "Stockout Rate",
+            "sum(stockout_positions)::double / nullif(sum(sku_store_positions), 0)",
+            Additivity.NON,
+            "rate",
+            "Share of positions at zero, recomputed from counts.",
+            ratio_of=("stockout_positions", "sku_store_positions"),
+        ),
+        "stockout_positions": Metric(
+            "stockout_positions",
+            "Stockouts",
+            "sum(stockout_positions)",
+            Additivity.FULL,
+            "count",
+            "Positions at zero.",
+        ),
+        "sku_store_positions": Metric(
+            "sku_store_positions",
+            "Positions",
+            "sum(sku_store_positions)",
+            Additivity.FULL,
+            "count",
+            "Positions in scope.",
+        ),
+        "on_time_rate": Metric(
+            "on_time_rate",
+            "On Time Delivery",
+            "sum(shipments_on_time)::double / nullif(sum(shipments_closed), 0)",
+            Additivity.NON,
+            "rate",
+            "Delivered by the promise date, over *closed* shipments. Averaging "
+            "daily rates would weigh a quiet Sunday like a peak Friday.",
+            ratio_of=("shipments_on_time", "shipments_closed"),
+        ),
+        "shipments": Metric(
+            "shipments",
+            "Shipments",
+            "sum(shipments)",
+            Additivity.FULL,
+            "count",
+            "Shipments raised.",
+        ),
+        "shipments_closed": Metric(
+            "shipments_closed",
+            "Closed Shipments",
+            "sum(shipments_closed)",
+            Additivity.FULL,
+            "count",
+            "Shipments that landed — the denominator for on-time rate.",
+        ),
+        "shipments_on_time": Metric(
+            "shipments_on_time",
+            "On Time Shipments",
+            "sum(shipments_on_time)",
+            Additivity.FULL,
+            "count",
+            "Shipments that met their promise date.",
+        ),
+        "avg_days_late": Metric(
+            "avg_days_late",
+            "Days Late",
+            "avg(avg_days_late)",
+            Additivity.NON,
+            "days",
+            "Mean lateness among shipments that missed.",
+        ),
+        "carriers_missing_promise": Metric(
+            "carriers_missing_promise",
+            "Carriers Missing",
+            "max(carriers_missing_promise)",
+            Additivity.NON,
+            "count",
+            "Distinct carriers that missed a promise.",
+        ),
+        "severe_days": Metric(
+            "severe_days",
+            "Severe Weather Days",
+            "count(*) filter (where is_severe)",
+            Additivity.FULL,
+            "days",
+            "Days carrying a provider severe-weather flag.",
+        ),
+        "max_precipitation_z": Metric(
+            "max_precipitation_z",
+            "Peak Rainfall",
+            "max(precipitation_z)",
+            Additivity.NON,
+            "z",
+            "Wettest day in scope, standardised against the region's own norm.",
+        ),
+        "max_wind_kph": Metric(
+            "max_wind_kph",
+            "Peak Wind",
+            "max(wind_kph_max)",
+            Additivity.NON,
+            "kph",
+            "Strongest wind in scope.",
+        ),
+        "promo_revenue": Metric(
+            "promo_revenue",
+            "Promotional Revenue",
+            "avg(promo_revenue)",
+            Additivity.NON,
+            "currency",
+            "National promotional revenue. Averaged, not summed: the same "
+            "national figure is attached to every region, so summing multiplies it "
+            "by the number of regions.",
+        ),
+        "active_promotions": Metric(
+            "active_promotions",
+            "Active Campaigns",
+            "max(active_promotions)",
+            Additivity.NON,
+            "count",
+            "Campaigns live in the window.",
+        ),
+        "avg_promo_depth": Metric(
+            "avg_promo_depth",
+            "Promotional Depth",
+            "avg(avg_promo_depth)",
+            Additivity.NON,
+            "rate",
+            "Mean effective discount depth.",
+        ),
+    },
+    dimensions=_dims(
+        ("region", "Region", "region"),
+        ("severe_flag", "Severe Flag", "severe_flag"),
+        ("business_date", "Date", "business_date"),
+    ),
+)
+
+
+RCA_WEATHER = Domain(
+    key="rca_weather",
+    label="Weather Effect",
+    relation="v_mart_rca_weather_effect",
+    date_column="",
+    metrics={
+        "severe_day_gap": Metric(
+            "severe_day_gap",
+            "Severe Day Revenue Gap",
+            "max(severe_day_gap)",
+            Additivity.NON,
+            "currency",
+            "Observed daily revenue difference between severe and ordinary days "
+            "in the same region. An association, not an effect: severe days "
+            "differ from ordinary ones in more ways than the weather.",
+        ),
+        "severe_day_gap_pct": Metric(
+            "severe_day_gap_pct",
+            "Severe Day Gap %",
+            "max(severe_day_gap_pct)",
+            Additivity.NON,
+            "rate",
+            "The same gap, relative to an ordinary day.",
+        ),
+        "severe_days": Metric(
+            "severe_days",
+            "Severe Days Observed",
+            "max(severe_days)",
+            Additivity.NON,
+            "days",
+            "Severe days behind the estimate — its entire evidence base.",
+        ),
+        "ordinary_days": Metric(
+            "ordinary_days",
+            "Ordinary Days",
+            "max(ordinary_days)",
+            Additivity.NON,
+            "days",
+            "Comparison days.",
+        ),
+    },
+    dimensions=_dims(("region", "Region", "region")),
+)
+
+
 DOMAINS: dict[str, Domain] = {
     domain.key: domain
     for domain in (
@@ -1795,6 +2081,9 @@ DOMAINS: dict[str, Domain] = {
         FORECAST,
         FORECAST_ACCURACY,
         FORECAST_EXPLANATION,
+        RCA_SLICE,
+        RCA_FACTOR,
+        RCA_WEATHER,
     )
 }
 

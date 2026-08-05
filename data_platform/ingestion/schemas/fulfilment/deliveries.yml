@@ -1,0 +1,74 @@
+# Outbound delivery lines — the shipping feed (RCA, Analytics §9).
+#
+# One row per shipped order, carrying what was promised and what happened.
+# This is what makes "shipping" a diagnosable dimension rather than a guess:
+# without a promised date there is no such thing as a late delivery, only a
+# delivery.
+#
+# Store-fulfilled orders never enter this feed — they have no shipment. That
+# absence is meaningful and must not be read as perfect performance, which is
+# why the fact records the fulfilment channel alongside the outcome.
+
+source: fulfilment
+table: deliveries
+version: "1.0"
+
+natural_key: [shipment_id]
+event_time_column: shipped_at
+default_timezone: UTC
+dedupe_tiebreaker: updated_at
+
+columns:
+  - name: shipment_id
+    type: string
+    class: business_key
+    normalize: upper
+
+  - name: order_id
+    type: string
+    class: business_key
+    normalize: upper
+
+  - name: store_id
+    type: string
+    class: business_key
+    normalize: upper
+
+  - name: carrier
+    type: string
+    class: dimension
+    normalize: upper
+
+  - name: shipped_at
+    type: timestamp
+    class: event_time
+    formats: ["%Y-%m-%d %H:%M:%S"]
+
+  - name: updated_at
+    type: timestamp
+    class: descriptor
+    required: false
+    formats: ["%Y-%m-%d %H:%M:%S"]
+
+  - name: promised_date
+    type: date
+    class: dimension
+
+  # NULL means in transit, not failed. The fact keeps the two apart for the
+  # same reason the purchase-order feed does: an open shipment has not yet
+  # had the chance to be late.
+  - name: delivered_date
+    type: date
+    class: dimension
+    required: false
+
+  - name: delivery_status
+    type: string
+    class: dimension
+    normalize: lower
+    enum: [in_transit, delivered, delayed, failed, returned_to_sender]
+
+metadata:
+  owner: data-platform
+  sla: "carrier scans available by 05:00 tenant-local"
+  expected_units: 1

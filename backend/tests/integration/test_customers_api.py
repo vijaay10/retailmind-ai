@@ -44,7 +44,13 @@ def customer_warehouse(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Pat
     from ingestion.core.duck import connect
     from ingestion.domain.schema import SourceSchema
     from ingestion.domain.window import Window
-    from ingestion.generators import inventory_files, pos_files, purchase_orders
+    from ingestion.generators import (
+        fulfilment,
+        inventory_files,
+        pos_files,
+        purchase_orders,
+        weather,
+    )
     from ingestion.pipeline import IngestionPipeline
 
     root = tmp_path_factory.mktemp("cust_wh")
@@ -87,6 +93,16 @@ def customer_warehouse(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Pat
             seed=900 + offset,
             as_of=LAST_DAY,
         )
+        # Weather and fulfilment each land one estate-wide file per day
+        # rather than one per store, which is why their completeness
+        # check counts a single unit below.
+        weather.generate_day(settings.inbox_dir("weather"), day, history_end=LAST_DAY)
+        fulfilment.generate_day(
+            settings.inbox_dir("fulfilment"),
+            day,
+            stores=stores,
+            history_end=LAST_DAY,
+        )
 
     schema_root = REPO / "data_platform" / "ingestion" / "schemas"
     window = Window(first_day, LAST_DAY + timedelta(days=1))
@@ -97,6 +113,8 @@ def customer_warehouse(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Pat
         ("pos", "sales", stores),
         ("inventory", "positions", stores),
         ("purchasing", "orders", 1),
+        ("weather", "observations", 1),
+        ("fulfilment", "deliveries", 1),
     ):
         schema = SourceSchema.from_yaml(schema_root / source / f"{table}.yml")
         connector = CsvFileConnector(

@@ -62,6 +62,14 @@ DOMAIN_PERMISSIONS: dict[str, Permission] = {
     "forecast": Permission.FORECASTS_READ,
     "forecast_accuracy": Permission.FORECASTS_READ,
     "forecast_explanation": Permission.FORECASTS_READ,
+    # RCA reads across every domain by design — that breadth is the feature,
+    # since a revenue drop can originate in inventory, shipping, or the
+    # weather. It therefore has its own permission rather than composing the
+    # others: a role that may run an investigation may see its findings,
+    # and that is a deliberate widening the RBAC matrix records explicitly.
+    "rca_slice": Permission.RCA_RUN,
+    "rca_factor": Permission.RCA_RUN,
+    "rca_weather": Permission.RCA_RUN,
 }
 
 DEFAULT_LOOKBACK_DAYS = 30

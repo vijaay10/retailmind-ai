@@ -1,0 +1,69 @@
+# Daily regional weather observations — an *external* feed (RCA, Analytics §9).
+#
+# Unlike every other source in this platform, the retailer does not produce
+# this data. It arrives from a meteorological provider keyed to the regions
+# the estate trades in, and that provenance matters for how it may be used:
+# weather is an **exogenous covariate**, not an operational fact. It can
+# explain a footfall drop; it can never be the thing an operator fixes.
+#
+# One row per region per day. Store-level would be more precise and is not
+# available: providers price by station, and a region-level subscription is
+# what most retailers actually buy. Modelling that honestly here is better
+# than inventing a per-store precision the feed does not carry.
+
+source: weather
+table: observations
+version: "1.0"
+
+natural_key: [region, observation_date]
+event_time_column: observed_at
+default_timezone: UTC
+dedupe_tiebreaker: ingested_at
+
+columns:
+  - name: region
+    type: string
+    class: business_key
+    normalize: upper
+
+  - name: observation_date
+    type: date
+    class: dimension
+
+  - name: observed_at
+    type: timestamp
+    class: event_time
+    formats: ["%Y-%m-%d %H:%M:%S"]
+
+  - name: ingested_at
+    type: timestamp
+    class: descriptor
+    required: false
+    formats: ["%Y-%m-%d %H:%M:%S"]
+
+  - name: temp_c_mean
+    type: decimal
+    class: measure
+
+  - name: precipitation_mm
+    type: decimal
+    class: measure
+
+  - name: wind_kph_max
+    type: decimal
+    class: measure
+
+  # A provider-issued severe-weather flag. Kept separate from the raw
+  # measurements because "the met office issued a warning" is a materially
+  # different signal from "it rained 12mm" — the first changes whether people
+  # leave the house, the second usually does not.
+  - name: severe_flag
+    type: string
+    class: dimension
+    normalize: lower
+    enum: ["none", "wind", "snow", "flood", "heat"]
+
+metadata:
+  owner: data-platform
+  sla: "weather observations available by 03:00 UTC for the prior day"
+  expected_units: 1

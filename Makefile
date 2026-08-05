@@ -75,7 +75,7 @@ backfill: ## Backfill every source over a window: make backfill START=2026-06-01
 RM_DEMO_STORES ?= 40
 RM_DEMO_DAY    ?= 2026-07-21
 PER_STORE_SOURCES := pos:sales inventory:positions
-ESTATE_SOURCES    := purchasing:orders
+ESTATE_SOURCES    := purchasing:orders weather:observations fulfilment:deliveries
 
 .PHONY: etl-demo
 etl-demo: ## Generate synthetic source files and ingest every source

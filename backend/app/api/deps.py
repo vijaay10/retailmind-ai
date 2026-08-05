@@ -39,6 +39,7 @@ from app.services.customers.service import CustomerIntelligenceService
 from app.services.dashboard.service import ExecutiveDashboardService
 from app.services.forecasting.service import ForecastingService
 from app.services.inventory.service import InventoryIntelligenceService
+from app.services.rca.service import RootCauseService
 from app.services.shared import authz
 from app.services.shared.uow import UnitOfWork
 
@@ -219,3 +220,17 @@ def get_forecast_service(analytics: AnalyticsServiceDep) -> ForecastingService:
 
 
 ForecastServiceDep = Annotated[ForecastingService, Depends(get_forecast_service)]
+
+
+def get_rca_service(analytics: AnalyticsServiceDep) -> RootCauseService:
+    """Root cause analysis over the governed analytics registry.
+
+    Reads every RCA relation through the same registry as the rest of the
+    platform. That breadth is the feature — a revenue drop can originate in
+    inventory, shipping, or the weather — and routing it through the registry
+    is what keeps the breadth from becoming an exemption from access control.
+    """
+    return RootCauseService(analytics)
+
+
+RcaServiceDep = Annotated[RootCauseService, Depends(get_rca_service)]

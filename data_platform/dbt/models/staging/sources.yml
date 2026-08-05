@@ -52,6 +52,32 @@ sources:
           - name: business_date
             data_tests: [not_null]
 
+      - name: weather__observations
+        description: >
+          Daily regional weather from an external provider. The one source
+          here the retailer does not produce, and therefore the one dimension
+          root-cause analysis can explain a drop with but never act on.
+        loaded_at_field: business_date
+        columns:
+          - name: region
+            data_tests: [not_null]
+          - name: observation_date
+            data_tests: [not_null]
+
+      - name: fulfilment__deliveries
+        description: >
+          Outbound shipments with promise and delivery dates. Store-fulfilled
+          orders never appear: an absent shipment is not a fast one, which is
+          why the fact carries the channel alongside the outcome.
+        loaded_at_field: business_date
+        columns:
+          - name: shipment_id
+            data_tests: [not_null]
+          - name: order_id
+            data_tests: [not_null]
+          - name: carrier
+            data_tests: [not_null]
+
       - name: purchasing__orders
         description: >
           Purchase order lines — an accumulating snapshot. The same line
