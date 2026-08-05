@@ -21,6 +21,8 @@ dev = [
     "import-linter>=2.0",
     "testcontainers>=4.8",
     "types-PyYAML>=6.0",
+    "types-openpyxl>=3.1",
+    "types-reportlab>=4.2",
 ]
 
 # ── Shared tool configuration (single source for the whole monorepo) ──

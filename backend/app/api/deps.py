@@ -42,6 +42,7 @@ from app.services.inventory.service import InventoryIntelligenceService
 from app.services.nlq.service import NaturalLanguageService
 from app.services.rca.service import RootCauseService
 from app.services.recommendations.service import RecommendationService
+from app.services.reporting.composer import ReportComposer
 from app.services.shared import authz
 from app.services.shared.uow import UnitOfWork
 
@@ -270,3 +271,21 @@ def get_nlq_service(
 
 
 NlqServiceDep = Annotated[NaturalLanguageService, Depends(get_nlq_service)]
+
+
+def get_report_service(
+    analytics: AnalyticsServiceDep,
+    rca: RcaServiceDep,
+    forecasts: ForecastServiceDep,
+    recommendations: RecommendationServiceDep,
+) -> ReportComposer:
+    """Report composition over the platform's own surfaces.
+
+    The composer takes no request context and renders nothing, so the same
+    object can be driven by a worker writing to object storage when scheduled
+    delivery lands.
+    """
+    return ReportComposer(analytics, rca=rca, forecasts=forecasts, recommendations=recommendations)
+
+
+ReportServiceDep = Annotated[ReportComposer, Depends(get_report_service)]

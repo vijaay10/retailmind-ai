@@ -103,6 +103,10 @@ forecast: ## Train forecast models and publish predictions (run after `make ware
 	@echo "→ rebuilding so dbt unions the forecasts into fct_forecast"
 	cd data_platform/dbt && uv run dbt build --profiles-dir . --select fct_forecast+
 
+.PHONY: report-demo
+report-demo: ## Render a report to PDF, PPTX, and XLSX in ./build
+	uv run python scripts/render_report.py build
+
 .PHONY: warehouse-docs
 warehouse-docs: ## Generate and serve the dbt documentation site
 	cd data_platform/dbt && uv run dbt docs generate --profiles-dir .

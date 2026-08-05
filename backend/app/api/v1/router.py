@@ -17,6 +17,7 @@ from app.api.v1 import (
     nlq,
     rca,
     recommendations,
+    reports,
 )
 
 api_router = APIRouter()
@@ -29,6 +30,7 @@ api_router.include_router(forecasts.router)
 api_router.include_router(rca.router)
 api_router.include_router(recommendations.router)
 api_router.include_router(nlq.router)
+api_router.include_router(reports.router)
 
-# TODO(S5+): alerts, reports,
+# TODO(S5+): alerts,
 # dashboards, admin — mounted as each lands.
