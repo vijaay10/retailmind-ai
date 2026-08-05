@@ -40,6 +40,7 @@ from app.services.dashboard.service import ExecutiveDashboardService
 from app.services.forecasting.service import ForecastingService
 from app.services.inventory.service import InventoryIntelligenceService
 from app.services.rca.service import RootCauseService
+from app.services.recommendations.service import RecommendationService
 from app.services.shared import authz
 from app.services.shared.uow import UnitOfWork
 
@@ -234,3 +235,16 @@ def get_rca_service(analytics: AnalyticsServiceDep) -> RootCauseService:
 
 
 RcaServiceDep = Annotated[RootCauseService, Depends(get_rca_service)]
+
+
+def get_recommendation_service(analytics: AnalyticsServiceDep) -> RecommendationService:
+    """Recommendations over the governed analytics registry.
+
+    Composes surfaces the platform already publishes rather than reading the
+    warehouse directly, so a recommendation can never quote a number the
+    corresponding dashboard would disagree with.
+    """
+    return RecommendationService(analytics)
+
+
+RecommendationServiceDep = Annotated[RecommendationService, Depends(get_recommendation_service)]

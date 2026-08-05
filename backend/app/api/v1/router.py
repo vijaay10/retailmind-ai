@@ -7,7 +7,16 @@ rather than something each module has to remember (Backend design §7).
 
 from fastapi import APIRouter
 
-from app.api.v1 import analytics, auth, customers, dashboard, forecasts, inventory, rca
+from app.api.v1 import (
+    analytics,
+    auth,
+    customers,
+    dashboard,
+    forecasts,
+    inventory,
+    rca,
+    recommendations,
+)
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
@@ -17,6 +26,7 @@ api_router.include_router(customers.router)
 api_router.include_router(inventory.router)
 api_router.include_router(forecasts.router)
 api_router.include_router(rca.router)
+api_router.include_router(recommendations.router)
 
-# TODO(S5+): nlq, alerts, recommendations, reports,
+# TODO(S5+): nlq, alerts, reports,
 # dashboards, admin — mounted as each lands.
