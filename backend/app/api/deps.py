@@ -39,6 +39,7 @@ from app.services.customers.service import CustomerIntelligenceService
 from app.services.dashboard.service import ExecutiveDashboardService
 from app.services.forecasting.service import ForecastingService
 from app.services.inventory.service import InventoryIntelligenceService
+from app.services.nlq.service import NaturalLanguageService
 from app.services.rca.service import RootCauseService
 from app.services.recommendations.service import RecommendationService
 from app.services.shared import authz
@@ -248,3 +249,24 @@ def get_recommendation_service(analytics: AnalyticsServiceDep) -> Recommendation
 
 
 RecommendationServiceDep = Annotated[RecommendationService, Depends(get_recommendation_service)]
+
+
+def get_nlq_service(
+    analytics: AnalyticsServiceDep,
+    rca: RcaServiceDep,
+    forecasts: ForecastServiceDep,
+    recommendations: RecommendationServiceDep,
+) -> NaturalLanguageService:
+    """Natural-language querying over the governed registry.
+
+    Composed from the engines that already answer each kind of question, so a
+    question routed to root cause analysis returns the same graded findings
+    the RCA endpoint does — rather than a second, weaker implementation of the
+    same reasoning living behind a chat box.
+    """
+    return NaturalLanguageService(
+        analytics, rca=rca, forecasts=forecasts, recommendations=recommendations
+    )
+
+
+NlqServiceDep = Annotated[NaturalLanguageService, Depends(get_nlq_service)]

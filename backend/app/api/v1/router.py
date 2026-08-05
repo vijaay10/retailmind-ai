@@ -14,6 +14,7 @@ from app.api.v1 import (
     dashboard,
     forecasts,
     inventory,
+    nlq,
     rca,
     recommendations,
 )
@@ -27,6 +28,7 @@ api_router.include_router(inventory.router)
 api_router.include_router(forecasts.router)
 api_router.include_router(rca.router)
 api_router.include_router(recommendations.router)
+api_router.include_router(nlq.router)
 
-# TODO(S5+): nlq, alerts, reports,
+# TODO(S5+): alerts, reports,
 # dashboards, admin — mounted as each lands.
