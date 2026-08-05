@@ -55,6 +55,17 @@ plugins = ["pydantic.mypy"]
 # strict from day one on domain/services (Backend design §39); relax per-module only via ADR
 exclude = ["notebooks"]
 
+# Celery ships neither stubs nor a py.typed marker, so its decorators strip
+# annotations from the tasks they wrap. Scoped to the worker package rather
+# than relaxed globally.
+[[tool.mypy.overrides]]
+module = ["celery.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["app.workers.tasks.*", "app.workers.celery_app"]
+disallow_untyped_decorators = false
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["backend/tests", "data_platform/tests", "ml/tests"]

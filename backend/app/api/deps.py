@@ -40,6 +40,7 @@ from app.services.dashboard.service import ExecutiveDashboardService
 from app.services.forecasting.service import ForecastingService
 from app.services.inventory.service import InventoryIntelligenceService
 from app.services.nlq.service import NaturalLanguageService
+from app.services.notifications.service import NotificationService
 from app.services.rca.service import RootCauseService
 from app.services.recommendations.service import RecommendationService
 from app.services.reporting.composer import ReportComposer
@@ -289,3 +290,34 @@ def get_report_service(
 
 
 ReportServiceDep = Annotated[ReportComposer, Depends(get_report_service)]
+
+
+def get_notification_service(
+    request: Request,
+    principal: PrincipalDep,
+    session: SessionDep,
+    analytics: AnalyticsServiceDep,
+    forecasts: ForecastServiceDep,
+    recommendations: RecommendationServiceDep,
+) -> NotificationService:
+    """Detection and the in-app inbox, over one request-scoped session.
+
+    The email sender is deliberately absent on the request path: a manual
+    sweep from the UI writes in-app notifications and nothing leaves the
+    building. Email fan-out belongs to the scheduled worker, where the
+    recipient list is the estate rather than whoever clicked.
+    """
+    from app.infrastructure.db.repositories.notifications import NotificationRepository
+    from app.workers.container import _RepositorySink
+
+    repository = NotificationRepository(session, principal.tenant_id)
+    return NotificationService(
+        analytics,
+        forecasts=forecasts,
+        recommendations=recommendations,
+        sink=_RepositorySink(repository),  # type: ignore[arg-type]
+        repository=repository,
+    )
+
+
+NotificationServiceDep = Annotated[NotificationService, Depends(get_notification_service)]
