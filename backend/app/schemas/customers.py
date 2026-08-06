@@ -70,10 +70,17 @@ class JourneyResponse(ResponseModel):
 class ChurnRiskResponse(ResponseModel):
     grouped_by: str
     total_value_at_risk: float = Field(
-        description="Lifetime value held by customers in medium or higher risk bands."
+        description=(
+            "Lifetime value held by customers in medium or higher risk bands. "
+            "Always read off the risk-band grouping, so it means the same thing "
+            "whichever `by` the caller chose to display."
+        )
     )
     vip_value_at_risk: float = Field(
-        description="The subset held by VIPs — expensive to replace, still reachable."
+        description=(
+            "The subset of that held by VIPs — expensive to replace, still "
+            "reachable. Same bands, same grouping."
+        )
     )
     bands: list[dict[str, Any]]
     privacy: PrivacyNote

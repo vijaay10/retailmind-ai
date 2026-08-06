@@ -394,15 +394,46 @@ async def test_churn_risk_is_ranked_by_value_not_headcount(
     assert values == sorted(values, reverse=True)
 
 
-async def test_churn_risk_totals_reconcile_with_their_rows(
+async def test_the_headline_counts_only_customers_actually_at_risk(
     client: AsyncClient,
 ) -> None:
+    """The earlier version of this test asserted the total equalled the sum of
+    *every* band — which is how the bug survived.
+
+    `value_at_risk` is the lifetime value held by the customers in a band, so
+    summing all bands puts the `none` band into a figure labelled "value at
+    risk". On the demo tenant that is 44% of the headline: a retention brief
+    built on it would size the opportunity at nearly twice what exists.
+    """
     body = (
         await client.get("/api/v1/customers/churn-risk", headers=await _auth(client, "ceo"))
     ).json()
+
+    elevated = [row for row in body["bands"] if row["churn_risk_band"] in {"medium", "high"}]
     assert body["total_value_at_risk"] == pytest.approx(
-        sum(row["value_at_risk"] for row in body["bands"]), rel=1e-6
+        sum(row["value_at_risk"] for row in elevated), rel=1e-6
     )
+
+    quiet = [row for row in body["bands"] if row["churn_risk_band"] in {"none", "low", "unknown"}]
+    if quiet:
+        assert body["total_value_at_risk"] < sum(row["value_at_risk"] for row in body["bands"])
+
+
+async def test_the_headline_means_the_same_thing_under_every_grouping(
+    client: AsyncClient,
+) -> None:
+    """`by` chooses how the rows are displayed. A headline that changed with it
+    would be a number nobody could quote without also quoting a toggle."""
+    headers = await _auth(client, "ceo")
+    totals = set()
+    for by in ("risk_band", "segment", "stage"):
+        response = await client.get(
+            "/api/v1/customers/churn-risk", params={"by": by}, headers=headers
+        )
+        assert response.status_code == 200
+        totals.add(round(response.json()["total_value_at_risk"], 2))
+
+    assert len(totals) == 1
 
 
 async def test_churn_risk_can_be_grouped_by_segment(client: AsyncClient) -> None:

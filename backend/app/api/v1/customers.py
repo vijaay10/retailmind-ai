@@ -14,7 +14,7 @@ they are views of one population, and letting a role see churn risk without
 the segment it belongs to would produce decisions made on half a picture.
 """
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Query
 
@@ -30,6 +30,11 @@ from app.schemas.customers import (
 from app.services.customers.service import PRIVACY_FLOOR, CustomerSection
 
 router = APIRouter(prefix="/customers", tags=["customer intelligence"])
+
+#: Bands that count toward the headline "value at risk". `none` and `low` are
+#: excluded because they are not at risk, and `unknown` because a customer
+#: whose cadence cannot be established is not evidence of anything.
+ELEVATED_BANDS = frozenset({"medium", "high", "critical"})
 
 _FORBIDDEN = {
     "description": "Requires the customer analytics module.",
@@ -235,16 +240,31 @@ async def churn_risk(
     the response: expensive to replace, and still reachable.
     """
     section = await service.churn_risk(principal, by=by)
-    total_at_risk = sum(float(row.get("value_at_risk") or 0) for row in section.rows)
-    vip_at_risk = sum(float(row.get("vip_value_at_risk") or 0) for row in section.rows)
+
+    # The headline counts elevated bands only, and is always read off the
+    # risk-band grouping — never off whichever grouping the caller happened to
+    # display. Two reasons. Summing every band puts customers in the `none`
+    # band into a figure labelled "value at risk", which here is 44% of the
+    # total and turns a retention brief into fiction. And a headline whose
+    # meaning changes when someone flips a display toggle is a number nobody
+    # can quote in a meeting.
+    banded = section if by == "risk_band" else await service.churn_risk(principal, by="risk_band")
+    elevated = [
+        row for row in banded.rows if str(row.get("churn_risk_band", "")).lower() in ELEVATED_BANDS
+    ]
+
     return ChurnRiskResponse(
         grouped_by=by,
-        total_value_at_risk=round(total_at_risk, 2),
-        vip_value_at_risk=round(vip_at_risk, 2),
+        total_value_at_risk=round(_total(elevated, "value_at_risk"), 2),
+        vip_value_at_risk=round(_total(elevated, "vip_value_at_risk"), 2),
         bands=section.rows,
         privacy=_privacy(section),
         meta=_meta(section),
     )
+
+
+def _total(rows: list[dict[str, Any]], column: str) -> float:
+    return sum(float(row.get(column) or 0) for row in rows)
 
 
 @router.get(
