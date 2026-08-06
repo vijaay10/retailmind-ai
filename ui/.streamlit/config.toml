@@ -1,0 +1,29 @@
+# Base theme. This is the single place the console's theme is decided: the
+# palette in `theme.py` reads the running session's theme and follows it, so
+# changing `base` here restyles everything, widgets included. There is no
+# in-app switch, because CSS cannot restyle a dataframe — see theme.py.
+[theme]
+base = "dark"
+primaryColor = "#4C8DFF"
+backgroundColor = "#0E1117"
+secondaryBackgroundColor = "#161B26"
+textColor = "#E6E9EF"
+font = "sans serif"
+
+[server]
+# The console renders API responses; it never receives uploads.
+maxUploadSize = 5
+
+# Cross-site request forgery protection stays on. `enableCORS` is deliberately
+# left at its default: setting it to false while XSRF protection is enabled
+# makes Streamlit ignore it and warn on every boot, so the pair reads as
+# security hardening while doing nothing.
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
+
+[client]
+# The deploy button and developer menu belong to someone building the app, not
+# to an operator reading a dashboard.
+toolbarMode = "minimal"

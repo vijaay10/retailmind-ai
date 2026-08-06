@@ -16,9 +16,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
       - run: uv sync --all-packages
-      - run: uv run ruff check backend data_platform ml
-      - run: uv run ruff format --check backend data_platform ml
+      - run: uv run ruff check backend data_platform ml ui
+      - run: uv run ruff format --check backend data_platform ml ui
+      # Separate runs: `ui/app.py` and `backend/app/` both map to the
+      # module name `app`, which mypy rejects in a single invocation.
       - run: uv run mypy backend/app
+      - run: uv run mypy ui
 
   test:
     runs-on: ubuntu-latest
@@ -26,7 +29,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
       - run: uv sync --all-packages
-      - run: uv run pytest backend/tests/unit data_platform/tests/unit -q
+      - run: uv run pytest backend/tests/unit data_platform/tests/unit ui/tests -q
       # TODO(S1): integration job (testcontainers), paths-filtered per-package
       # jobs, import-linter contracts, coverage gate ≥85% on domain/services
 

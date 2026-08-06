@@ -8,7 +8,7 @@ description = "RetailMind AI monorepo workspace (tooling root — not an install
 requires-python = ">=3.12"
 
 [tool.uv.workspace]
-members = ["backend", "data_platform", "ml"]
+members = ["backend", "data_platform", "ml", "ui"]
 
 [dependency-groups]
 dev = [
@@ -23,6 +23,7 @@ dev = [
     "types-PyYAML>=6.0",
     "types-openpyxl>=3.1",
     "types-reportlab>=4.2",
+    "pandas-stubs>=2.2",
 ]
 
 # ── Shared tool configuration (single source for the whole monorepo) ──
@@ -30,7 +31,7 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["backend", "data_platform", "ml"]
+src = ["backend", "data_platform", "ml", "ui"]
 
 [tool.ruff.lint]
 select = [
@@ -68,7 +69,7 @@ disallow_untyped_decorators = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["backend/tests", "data_platform/tests", "ml/tests"]
+testpaths = ["backend/tests", "data_platform/tests", "ml/tests", "ui/tests"]
 addopts = "-ra --strict-markers --import-mode=importlib"
 markers = [
     "integration: requires Docker services (testcontainers)",

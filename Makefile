@@ -33,19 +33,22 @@ logs: ## Tail all service logs
 # ── Quality ───────────────────────────────────────────────────────────
 .PHONY: lint
 lint: ## Lint + typecheck everything
-	uv run ruff check backend data_platform ml
-	uv run ruff format --check backend data_platform ml
+	uv run ruff check backend data_platform ml ui
+	uv run ruff format --check backend data_platform ml ui
+	# Two invocations, not one: `ui/app.py` and `backend/app/` both map to
+	# the module name `app`, and mypy refuses the collision.
 	uv run mypy backend/app
+	uv run mypy ui
 	@echo "TODO(S2): sqlfluff lint data_platform/dbt"
 
 .PHONY: fmt
 fmt: ## Auto-format
-	uv run ruff format backend data_platform ml
-	uv run ruff check --fix backend data_platform ml
+	uv run ruff format backend data_platform ml ui
+	uv run ruff check --fix backend data_platform ml ui
 
 .PHONY: test
 test: ## Run the fast test ladder (unit)
-	uv run pytest backend/tests/unit data_platform/tests/unit -q
+	uv run pytest backend/tests/unit data_platform/tests/unit ui/tests -q
 
 .PHONY: test-integration
 test-integration: ## Integration tests (needs Docker)
@@ -132,3 +135,8 @@ seed-demo: seed-db ## Seed the Northwind Threads demo tenant (refuses in prod)
 .PHONY: api
 api: ## Run the API locally (no Docker)
 	cd backend && uv run uvicorn app.main:create_app --factory --reload --port 8000
+
+.PHONY: console
+console: ## Run the Streamlit console (point RM_API_BASE_URL at a running API)
+	cd ui && RM_API_BASE_URL=$${RM_API_BASE_URL:-http://localhost:8090} \
+		uv run streamlit run app.py --server.port $${RM_UI_PORT:-8501}

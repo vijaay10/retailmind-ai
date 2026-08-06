@@ -38,7 +38,8 @@ Full design documentation lives in [`docs/architecture/`](docs/architecture/) �
 backend/         FastAPI modular monolith (api → services → domain → infrastructure)
 data_platform/   Connectors, Airflow DAGs, dbt project, data-quality suites
 ml/              Feature builders, training, evaluation, registry config
-frontend/        Next.js app (dashboards, copilot, admin)
+ui/              Streamlit operator console (10 pages, auth, dark mode)
+frontend/        Next.js scaffold, reserved — not activated
 infra/           Dockerfiles, compose profiles, Terraform, edge config
 docs/            Architecture docs, ADRs, runbooks, data dictionary
 ```
@@ -47,6 +48,8 @@ docs/            Architecture docs, ADRs, runbooks, data dictionary
 
 ```bash
 make up          # dev stack with hot reload
+make api         # API only, no Docker
+make console     # Streamlit console (RM_API_BASE_URL points it at the API)
 make test        # full test ladder
 make lint        # ruff + mypy + sqlfluff
 make down        # stop everything
