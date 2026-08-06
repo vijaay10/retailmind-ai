@@ -33,6 +33,7 @@ from app.infrastructure.db.repositories.insights import (
     RecommendationReadRepository,
 )
 from app.infrastructure.semantic.repository import AnalyticsRepository
+from app.services.analyst.service import BusinessAnalystService
 from app.services.analytics.service import AnalyticsService
 from app.services.auth.service import AuthService
 from app.services.customers.service import CustomerIntelligenceService
@@ -321,3 +322,31 @@ def get_notification_service(
 
 
 NotificationServiceDep = Annotated[NotificationService, Depends(get_notification_service)]
+
+
+def get_analyst_service(
+    analytics: AnalyticsServiceDep,
+    nlq: NlqServiceDep,
+    rca: RcaServiceDep,
+    forecasts: ForecastServiceDep,
+    recommendations: RecommendationServiceDep,
+    reports: ReportServiceDep,
+) -> BusinessAnalystService:
+    """The analyst, composed from every engine that can answer something.
+
+    It holds no query logic of its own: each capability delegates to the
+    surface that owns the question, so an answer here is the same answer the
+    corresponding endpoint gives. An assistant with its own implementation
+    would eventually contradict the screen the user is looking at.
+    """
+    return BusinessAnalystService(
+        analytics,
+        nlq=nlq,
+        rca=rca,
+        forecasts=forecasts,
+        recommendations=recommendations,
+        reports=reports,
+    )
+
+
+AnalystServiceDep = Annotated[BusinessAnalystService, Depends(get_analyst_service)]

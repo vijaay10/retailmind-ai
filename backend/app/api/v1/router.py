@@ -8,6 +8,7 @@ rather than something each module has to remember (Backend design §7).
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    analyst,
     analytics,
     auth,
     customers,
@@ -33,6 +34,7 @@ api_router.include_router(recommendations.router)
 api_router.include_router(nlq.router)
 api_router.include_router(reports.router)
 api_router.include_router(notifications.router)
+api_router.include_router(analyst.router)
 
 # TODO(S5+):
 # dashboards, admin — mounted as each lands.
