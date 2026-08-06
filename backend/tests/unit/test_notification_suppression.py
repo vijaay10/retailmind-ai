@@ -6,6 +6,7 @@ about *not* sending things, and every rule here exists because of a specific
 way these systems fail in production.
 """
 
+import json
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -396,3 +397,71 @@ def test_a_failing_address_raises_so_the_caller_can_record_it() -> None:
 
 def test_the_null_sender_delivers_nothing() -> None:
     NullEmailSender().send(Message(to="a@b.c", subject="s", body="b"))
+
+
+# ── The payload has to survive the database ──────────────────────────
+
+
+def test_an_unbounded_expectation_serialises_as_null_not_infinity() -> None:
+    """The bug this pins took down every alert in a sweep.
+
+    A low-inventory alert has no upper bound on cover — no amount of stock
+    makes it fire — and that was written as `float("inf")`. JSON has no
+    infinity: `json.dumps` emits the JavaScript token `Infinity`, Postgres
+    rejects it as invalid JSON, the insert fails, and because delivery runs
+    inside the sweep, every *other* alert in that run dies with it. A single
+    unbounded ratio silenced the whole system.
+    """
+    candidate = AlertCandidate(
+        kind=AlertKind.LOW_INVENTORY,
+        subject="SKU-1@S1",
+        title="t",
+        body="b",
+        severity=Severity.CRITICAL,
+        observed=2.0,
+        expected_low=7.0,
+        expected_high=float("inf"),
+    )
+
+    payload = candidate.as_payload()
+
+    assert payload["expected_high"] is None
+    assert "Infinity" not in json.dumps(payload)
+
+
+def test_a_value_that_could_not_be_computed_serialises_as_null() -> None:
+    """NaN reaches a payload through any ratio with a zero denominator, and it
+    is the same failure with a less obvious cause."""
+    candidate = AlertCandidate(
+        kind=AlertKind.FRAUD_RISK,
+        subject="S1",
+        title="t",
+        body="b",
+        severity=Severity.WARN,
+        observed=float("nan"),
+        evidence={"z_score": float("nan"), "nested": {"ratio": float("-inf")}},
+    )
+
+    payload = candidate.as_payload()
+
+    assert payload["observed"] is None
+    assert payload["evidence"]["z_score"] is None
+    assert payload["evidence"]["nested"]["ratio"] is None
+    json.dumps(payload)  # would raise nothing, but must not emit NaN
+
+
+def test_every_detector_produces_a_payload_json_can_carry() -> None:
+    """Checked across all six kinds, because the guard is only as good as the
+    field it is applied to."""
+    for kind in AlertKind:
+        payload = AlertCandidate(
+            kind=kind,
+            subject="s",
+            title="t",
+            body="b",
+            severity=Severity.INFO,
+            observed=1.0,
+            expected_low=None,
+            expected_high=None,
+        ).as_payload()
+        assert json.loads(json.dumps(payload))["expected_low"] is None

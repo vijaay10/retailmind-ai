@@ -64,17 +64,25 @@ class NotificationRepository:
         suppression decision is grounded in what was actually written.
         """
         cutoff = func.now() - func.make_interval(0, 0, 0, SUPPRESSION_LOOKBACK_DAYS)
+
+        # One expression object, reused. Writing `payload["fingerprint"].astext`
+        # separately in the select and the GROUP BY renders two *different*
+        # bind parameters, and Postgres compares grouping expressions
+        # structurally: `payload ->> $1` and `payload ->> $3` are not the same
+        # expression, so it rejects the query outright.
+        fingerprint = Notification.payload["fingerprint"].astext
+
         statement = (
             select(
-                Notification.payload["fingerprint"].astext.label("fingerprint"),
+                fingerprint.label("fingerprint"),
                 func.max(Notification.created_at).label("last_sent"),
             )
             .where(
                 Notification.tenant_id == self._tenant_id,
                 Notification.created_at >= cutoff,
-                Notification.payload["fingerprint"].astext.is_not(None),
+                fingerprint.is_not(None),
             )
-            .group_by(Notification.payload["fingerprint"].astext)
+            .group_by(fingerprint)
         )
         rows = (await self._session.execute(statement)).all()
         return {row.fingerprint: row.last_sent for row in rows if row.fingerprint}

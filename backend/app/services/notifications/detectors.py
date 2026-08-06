@@ -97,7 +97,10 @@ def low_inventory(rows: list[dict[str, Any]], *, as_of: date) -> list[AlertCandi
                 severity=severity,
                 observed=cover,
                 expected_low=LOW_COVER_DAYS,
-                expected_high=float("inf"),
+                # Unbounded above: there is no amount of cover that makes this
+                # alert fire. `None` rather than infinity, which JSON cannot
+                # carry and Postgres will not accept.
+                expected_high=None,
                 detected_for=as_of,
                 evidence={
                     "days_of_cover": round(cover, 2),

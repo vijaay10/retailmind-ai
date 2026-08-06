@@ -18,6 +18,7 @@ whoever wrote it believes their signal is the important one.
 """
 
 import hashlib
+import math
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from enum import StrEnum
@@ -67,8 +68,11 @@ class AlertCandidate:
     body: str
     severity: Severity
     observed: float
-    expected_low: float = 0.0
-    expected_high: float = 0.0
+    expected_low: float | None = 0.0
+    expected_high: float | None = 0.0
+    """``None`` means unbounded on that side. JSON cannot represent infinity,
+    and a bound that only exists in Python is a bound that dies at the
+    database boundary — see :func:`_json_number`."""
     detected_for: date | None = None
     evidence: dict[str, Any] = field(default_factory=dict)
     deep_link: str = ""
@@ -100,14 +104,43 @@ class AlertCandidate:
             "title": self.title,
             "body": self.body,
             "severity": self.severity.value,
-            "observed": round(self.observed, 4),
-            "expected_low": round(self.expected_low, 4),
-            "expected_high": round(self.expected_high, 4),
+            "observed": _json_number(self.observed),
+            "expected_low": _json_number(self.expected_low),
+            "expected_high": _json_number(self.expected_high),
             "detected_for": self.detected_for.isoformat() if self.detected_for else None,
-            "evidence": self.evidence,
+            "evidence": {key: _json_safe(value) for key, value in self.evidence.items()},
             "deep_link": self.deep_link,
             "fingerprint": self.fingerprint,
         }
+
+
+def _json_number(value: float | None) -> float | None:
+    """Round for display, and turn what JSON cannot hold into null.
+
+    JSON has no infinity and no NaN. `json.dumps` emits the JavaScript
+    spellings — `Infinity`, `NaN` — and Postgres rejects those outright when
+    the payload lands in a `jsonb` column. The blast radius is the reason this
+    is a function rather than a comment: delivery happens inside the sweep, so
+    one unbounded ratio in one payload fails the insert and takes every other
+    alert in the run down with it.
+
+    Null is also the honest encoding. An infinite upper bound meant "no upper
+    bound", and a NaN meant the value could not be computed.
+    """
+    if value is None or not math.isfinite(value):
+        return None
+    return round(value, 4)
+
+
+def _json_safe(value: Any) -> Any:
+    """Same guarantee, for the free-form evidence dictionary."""
+    if isinstance(value, float):
+        return _json_number(value)
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_json_safe(item) for item in value]
+    return value
 
 
 @dataclass(frozen=True, slots=True)
