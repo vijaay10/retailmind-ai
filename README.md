@@ -39,8 +39,7 @@ backend/         FastAPI modular monolith (api → services → domain → infra
 data_platform/   Connectors, Airflow DAGs, dbt project, data-quality suites
 ml/              Feature builders, training, evaluation, registry config
 ui/              Streamlit console — 12 AI-native workspaces, design system
-frontend/        Next.js scaffold, reserved — not activated
-infra/           Dockerfiles, compose profiles, Terraform, edge config
+infra/           Dockerfiles, compose profiles, nginx edge, monitoring
 docs/            Architecture docs, ADRs, runbooks, data dictionary
 ```
 
