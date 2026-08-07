@@ -1,0 +1,370 @@
+# Production overlay.
+#
+#   docker compose -f compose.yml -f compose.prod.yml up -d
+#
+# What this overlay changes, and why each change is here rather than in the
+# base file:
+#
+# **Nothing but the edge is published.** The base file exposes the API and the
+# console on host ports so `make up` works with no proxy. In production those
+# ports are the whole attack surface, so they are unpublished and 443 is the
+# only way in.
+#
+# Removing them needs the `!reset` tag, not an empty list. Compose *merges*
+# mappings and *unions* sequences like `ports`, so `ports: []` in an overlay
+# contributes nothing and leaves the base's published ports exactly where they
+# were — the file reads as though it closed them while the API stayed on 8090.
+# `!reset null` is the only construct that actually removes an inherited
+# value. `scripts/check_ports.py` asserts the result, because this is a
+# security property that a comment cannot enforce.
+#
+# **Secrets come from files, not from the environment.** A value in
+# `environment:` is visible to anyone who can run `docker inspect`, appears in
+# `ps`, and is inherited by every child process. The `*_FILE` convention means
+# the platform mounts the secret and the application reads it.
+#
+# **Logs are bounded.** The json-file driver's default is unbounded, and the
+# first thing an unattended deployment does is fill its disk with logs from
+# the service that is failing.
+#
+# **Migrations run once, before anything serves.** A migration racing four
+# API workers is how two of them apply the same revision.
+
+services:
+  # ── Edge ────────────────────────────────────────────────────────────
+
+  edge:
+    image: nginx:1.27-alpine
+    depends_on:
+      api:
+        condition: service_healthy
+      ui:
+        condition: service_started
+    volumes:
+      - ../docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ../docker/nginx/tls:/etc/nginx/tls:ro
+      - certbot_webroot:/var/www/certbot
+      - certbot_certs:/etc/letsencrypt
+    # No log volume, deliberately. The nginx image symlinks access.log and
+    # error.log to /dev/stdout and /dev/stderr, so a volume mounted at
+    # /var/log/nginx receives those two symlinks and nothing else, forever —
+    # while looking in the compose file exactly like log persistence. The
+    # logs go to the json-file driver below, rotated, the same as every other
+    # service here.
+    networks: [edge]
+    ports:
+      # Defaults are the real ones. The override exists for hosts already
+      # running something on 80/443 (a shared box, a staging VM behind another
+      # load balancer) — not as a way to move the front door in production.
+      - "${RM_HTTP_PORT:-80}:80"
+      - "${RM_HTTPS_PORT:-443}:443"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "--no-check-certificate", "https://localhost/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "5"}
+    deploy:
+      resources:
+        limits: {memory: 256M, cpus: "0.5"}
+
+  certbot:
+    image: certbot/certbot:latest
+    # Never started by `up`; invoked by scripts/tls-letsencrypt.sh.
+    profiles: [tls]
+    volumes:
+      - certbot_webroot:/var/www/certbot
+      - certbot_certs:/etc/letsencrypt
+    networks: [edge]
+
+  # ── Application ─────────────────────────────────────────────────────
+
+  migrate:
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    command: ["migrate"]
+    # Runs to completion, then exits. Everything that serves waits on it
+    # having succeeded, so no worker ever queries a schema that is half
+    # migrated.
+    environment:
+      RM_APP_ENV: prod
+      RM_DB_HOST: ${RM_DB_HOST:?set RM_DB_HOST}
+      RM_DB_NAME: ${RM_DB_NAME:?set RM_DB_NAME}
+      RM_DB_USER: ${RM_DB_USER:?set RM_DB_USER}
+      RM_DB_PASSWORD_FILE: /run/secrets/db_password
+    secrets: [db_password]
+    networks: [app]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "2"}
+
+  api:
+    environment:
+      RM_APP_ENV: prod
+      RM_APP_LOG_LEVEL: ${RM_APP_LOG_LEVEL:-INFO}
+      RM_APP_BASE_URL: ${RM_APP_BASE_URL:?set RM_APP_BASE_URL to the public https URL}
+      RM_API_WORKERS: ${RM_API_WORKERS:-4}
+      RM_DB_HOST: ${RM_DB_HOST:?set RM_DB_HOST}
+      RM_DB_NAME: ${RM_DB_NAME:?set RM_DB_NAME}
+      RM_DB_USER: ${RM_DB_USER:?set RM_DB_USER}
+      RM_DB_PASSWORD_FILE: /run/secrets/db_password
+      RM_DB_SSLMODE: ${RM_DB_SSLMODE:-require}
+      RM_AUTH_JWT_PRIVATE_KEY_FILE: /run/secrets/jwt_private_key
+      RM_SMTP_HOST: ${RM_SMTP_HOST:-}
+      RM_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+    secrets: [db_password, jwt_private_key, smtp_password]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      redis-state:
+        condition: service_healthy
+    ports: !reset null   # the edge is the only way in
+    restart: always
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options: {max-size: "50m", max-file: "5"}
+    deploy:
+      resources:
+        limits: {memory: 1536M, cpus: "2.0"}
+        reservations: {memory: 512M}
+    # The application writes nothing to its own filesystem. /tmp is a tmpfs so
+    # report rendering has scratch space without the image being writable.
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    security_opt:
+      - no-new-privileges:true
+
+  ui:
+    environment:
+      RM_API_BASE_URL: http://api:8000
+      # Streamlit needs to know it is behind a proxy or its generated URLs
+      # point at the container.
+      STREAMLIT_SERVER_ENABLE_CORS: "false"
+      STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION: "true"
+      STREAMLIT_SERVER_BASE_URL_PATH: ""
+    depends_on:
+      api:
+        condition: service_healthy
+    ports: !reset null
+    restart: always
+    stop_grace_period: 20s
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "3"}
+    deploy:
+      resources:
+        limits: {memory: 1G, cpus: "1.0"}
+    security_opt:
+      - no-new-privileges:true
+
+  worker:
+    environment:
+      RM_APP_ENV: prod
+      RM_DB_HOST: ${RM_DB_HOST:?set RM_DB_HOST}
+      RM_DB_NAME: ${RM_DB_NAME:?set RM_DB_NAME}
+      RM_DB_USER: ${RM_DB_USER:?set RM_DB_USER}
+      RM_DB_PASSWORD_FILE: /run/secrets/db_password
+      RM_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+      RM_WORKER_CONCURRENCY: ${RM_WORKER_CONCURRENCY:-4}
+    secrets: [db_password, smtp_password]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis-state:
+        condition: service_healthy
+    restart: always
+    # Long enough for an in-flight sweep to finish. Tasks are idempotent and
+    # acked late, so a kill is survivable — but finishing is cheaper than
+    # redoing.
+    stop_grace_period: 60s
+    logging:
+      driver: json-file
+      options: {max-size: "50m", max-file: "5"}
+    deploy:
+      resources:
+        limits: {memory: 1G, cpus: "2.0"}
+    security_opt:
+      - no-new-privileges:true
+
+  beat:
+    environment:
+      RM_APP_ENV: prod
+      RM_DB_PASSWORD_FILE: /run/secrets/db_password
+    secrets: [db_password]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: always
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+    security_opt:
+      - no-new-privileges:true
+
+  # ── Data ────────────────────────────────────────────────────────────
+
+  postgres:
+    environment:
+      POSTGRES_DB: ${RM_DB_NAME:?set RM_DB_NAME}
+      POSTGRES_USER: ${RM_DB_USER:?set RM_DB_USER}
+      # Compose *merges* environment maps rather than replacing them, so the
+      # base file's dev password arrives here too — and the Postgres image
+      # refuses to start when both the value and the _FILE form are set.
+      # Blanking it is how an overlay removes an inherited variable.
+      POSTGRES_PASSWORD: ""
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      # Checksums catch silent corruption at read time. They cost a few
+      # percent and can only be enabled at initdb — so it is now or never.
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    secrets: [db_password]
+    ports: !reset null
+    restart: always
+    stop_grace_period: 60s
+    command:
+      - postgres
+      - -c
+      - max_connections=200
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=1536MB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=128MB
+      # Log slow queries. Without this the first sign of a missing index is a
+      # user complaint.
+      - -c
+      - log_min_duration_statement=1000
+      - -c
+      - log_checkpoints=on
+      - -c
+      - log_lock_waits=on
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "3"}
+    deploy:
+      resources:
+        limits: {memory: 2G, cpus: "2.0"}
+        reservations: {memory: 1G}
+
+  redis-cache:
+    ports: !reset null
+    restart: always
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "2"}
+
+  redis-state:
+    ports: !reset null
+    restart: always
+    # `appendfsync everysec` is the default and the right trade here: losing
+    # at most a second of rate-limit counters is survivable, and `always`
+    # costs a disk sync per write.
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "2"}
+    deploy:
+      resources:
+        limits: {memory: 512M, cpus: "0.5"}
+
+  minio:
+    environment:
+      # Same merge rule as Postgres above: blank the inherited dev values.
+      MINIO_ROOT_USER: ""
+      MINIO_ROOT_PASSWORD: ""
+      MINIO_ROOT_USER_FILE: /run/secrets/minio_user
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_password
+    secrets: [minio_user, minio_password]
+    ports: !reset null
+    restart: always
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "2"}
+
+  # ── Monitoring ──────────────────────────────────────────────────────
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-lifecycle
+    networks: [app]
+    ports: !reset null   # reachable through the edge or an SSH tunnel, not publicly
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "2"}
+    deploy:
+      resources:
+        limits: {memory: 768M, cpus: "0.5"}
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_SERVER_ROOT_URL: ${RM_GRAFANA_URL:-http://localhost:3000}
+    secrets: [grafana_password]
+    volumes:
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    networks: [app]
+    ports:
+      # Bound to loopback: reach it over an SSH tunnel rather than publishing
+      # a second login page to the internet.
+      - "127.0.0.1:3000:3000"
+    depends_on: [prometheus]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "2"}
+
+# ── Secrets ───────────────────────────────────────────────────────────
+#
+# Files on the host, mounted read-only into /run/secrets. Swap `file:` for
+# `external: true` when running under Swarm or a platform with its own store —
+# nothing above changes.
+
+secrets:
+  db_password:
+    file: ../secrets/db_password
+  jwt_private_key:
+    file: ../secrets/jwt_private_key
+  smtp_password:
+    file: ../secrets/smtp_password
+  minio_user:
+    file: ../secrets/minio_user
+  minio_password:
+    file: ../secrets/minio_password
+  grafana_password:
+    file: ../secrets/grafana_password
+
+volumes:
+  certbot_webroot:
+  certbot_certs:
+  prometheus_data:
+  grafana_data:

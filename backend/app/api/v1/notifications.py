@@ -16,6 +16,7 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Query
 
 from app.api.deps import NotificationServiceDep, PrincipalDep
+from app.core.metrics import record_sweep
 from app.schemas.notifications import (
     InboxResponse,
     MarkReadRequest,
@@ -124,4 +125,8 @@ async def sweep(principal: PrincipalDep, service: NotificationServiceDep) -> Swe
     must not silence the rest.
     """
     result = await service.run_sweep(principal)
-    return SweepResponse(**result.as_dict())
+    payload = result.as_dict()
+    # The gauge this updates is watched for *staleness*: a sweep that stops
+    # running produces no alerts, which looks exactly like a quiet estate.
+    record_sweep(notified=payload["notified"], suppressed=payload["suppressed"])
+    return SweepResponse(**payload)

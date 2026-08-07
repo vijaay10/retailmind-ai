@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI
 from sqlalchemy import text
+from starlette.responses import Response
 
 from app.api.v1.router import api_router
 from app.core.config import (
@@ -24,6 +25,7 @@ from app.core.config import (
 )
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
+from app.core.metrics import MetricsMiddleware, metrics_response, record_build
 from app.core.middleware import install_middleware
 from app.core.security import TokenSigner
 from app.infrastructure.cache.redis_cache import build_cache
@@ -114,6 +116,11 @@ def create_app(
         signer=app.state.token_signer,
         cors_origins=[settings.base_url] if settings.env != "prod" else [],
     )
+    # Outside the authentication middleware on purpose: a scrape must not need
+    # a token, and the endpoint is kept off the public edge by nginx instead.
+    app.add_middleware(MetricsMiddleware)
+    record_build(settings.version, settings.env)
+
     register_exception_handlers(app)
     app.include_router(api_router, prefix="/api/v1")
 
@@ -122,6 +129,16 @@ def create_app(
         """Process is up. Checks no dependencies by design — a dead database
         must not cause the orchestrator to restart healthy containers."""
         return {"status": "ok", "version": settings.version}
+
+    @app.get("/metrics", tags=["ops"], summary="Prometheus exposition", include_in_schema=False)
+    async def metrics() -> Response:
+        """Scrape target for Prometheus.
+
+        Unauthenticated, and deliberately not published by the edge: request
+        rates, error counts and endpoint names are reconnaissance. `nginx`
+        returns 404 for this path from outside.
+        """
+        return metrics_response()
 
     @app.get("/ready", tags=["ops"], summary="Readiness probe")
     async def ready() -> dict[str, str]:

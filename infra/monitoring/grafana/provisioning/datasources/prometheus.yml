@@ -1,0 +1,16 @@
+# The datasource, provisioned rather than clicked.
+#
+# A Grafana whose datasource was configured by hand is a Grafana that has to be
+# reconfigured by hand after every restore.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 15s

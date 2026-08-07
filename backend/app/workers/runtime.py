@@ -17,6 +17,7 @@ from typing import Any
 
 import structlog
 
+from app.core.config import read_secret
 from app.domain.auth.entities import Principal
 from app.domain.auth.permissions import Permission
 from app.infrastructure.notifications.email import (
@@ -73,11 +74,17 @@ def email_sender() -> EmailSender:
     host = os.environ.get("RM_SMTP_HOST")
     if not host:
         return NullEmailSender()
+    # RM_SMTP_PASSWORD_FILE is the production form: the platform mounts the
+    # secret so it never appears in `docker inspect` or a child process's env.
+    password_file = os.environ.get("RM_SMTP_PASSWORD_FILE")
+    password = (
+        read_secret(password_file) if password_file else os.environ.get("RM_SMTP_PASSWORD", "")
+    )
     return SmtpEmailSender(
         host=host,
         port=int(os.environ.get("RM_SMTP_PORT", "587")),
         username=os.environ.get("RM_SMTP_USERNAME", ""),
-        password=os.environ.get("RM_SMTP_PASSWORD", ""),
+        password=password,
         sender=os.environ.get("RM_SMTP_SENDER", "alerts@retailmind.local"),
     )
 

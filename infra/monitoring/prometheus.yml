@@ -1,0 +1,26 @@
+# Scrape configuration.
+#
+# Everything here is on the internal network. Prometheus is not published:
+# request rates, error counts and endpoint names are reconnaissance, and a
+# public /metrics is a free map of the application.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    env: prod
+    service: retailmind
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:8000"]
+        labels: {component: api}
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

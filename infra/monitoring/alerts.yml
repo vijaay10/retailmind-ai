@@ -1,0 +1,56 @@
+# Alerting rules.
+#
+# Deliberately few. An alert that fires on something nobody acts on trains
+# people to close the tab, and after that the one that mattered is closed too.
+# Each rule below names an action in its annotation; a rule that cannot is not
+# an alert, it is a dashboard panel.
+
+groups:
+  - name: availability
+    interval: 30s
+    rules:
+      - alert: ApiDown
+        expr: up{job="api"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "The API has not responded to a scrape for two minutes"
+          action: "Check `docker compose ps` and the api container's logs. If the
+            container is up but unscrapeable, the process is wedged — restart it."
+
+      - alert: HighErrorRate
+        # 5xx only. A wall of 403s means someone is probing, not that the
+        # platform is broken, and paging on it teaches people to ignore pages.
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m]))
+            / sum(rate(http_requests_total[5m])) > 0.05
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "More than 5% of requests are failing with a server error"
+          action: "Read the most recent error-level log lines; they carry the
+            request_id and the endpoint."
+
+      - alert: SlowRequests
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 5
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "95th percentile request latency above five seconds"
+          action: "An investigation sweeps nine dimensions and a report renders
+            three documents; both are legitimately slow. Check whether the
+            slowness is on those endpoints before treating it as a regression."
+
+  - name: work
+    interval: 60s
+    rules:
+      - alert: NoDetectionSweep
+        # The sweep is what turns a condition into an alert. If it stops, the
+        # platform goes quiet — which looks exactly like nothing being wrong.
+        expr: time() - max(retailmind_last_sweep_timestamp_seconds) > 7200
+        for: 10m
+        labels: {severity: critical}
+        annotations:
+          summary: "No detection sweep has completed in two hours"
+          action: "Check the beat and worker containers. Silence here is
+            indistinguishable from good news, which is why it pages."

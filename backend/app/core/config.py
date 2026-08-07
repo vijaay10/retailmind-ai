@@ -10,6 +10,19 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def read_secret(path: str) -> str:
+    """Read a mounted secret.
+
+    Trailing whitespace is stripped, and that detail is load-bearing rather
+    than tidiness. Docker's own ``file_env`` helper reads ``*_FILE`` secrets
+    with ``$(< file)``, which drops trailing newlines — so a secret file
+    written with a final newline gives Postgres a password without it and this
+    application a password with it. The two disagree, authentication fails,
+    and the error says nothing about a newline.
+    """
+    return Path(path).read_text().rstrip("\r\n")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="RM_APP_",
@@ -63,7 +76,7 @@ class AuthSettings(BaseSettings):
     def model_post_init(self, __context: object) -> None:
         """Resolve ``*_FILE`` indirection and environment-derived defaults."""
         if self.jwt_private_key_pem is None and self.jwt_private_key_file:
-            self.jwt_private_key_pem = Path(self.jwt_private_key_file).read_text()
+            self.jwt_private_key_pem = read_secret(self.jwt_private_key_file)
         if self.cookie_secure is None:
             # Secure everywhere the app is actually served over TLS; explicit
             # RM_AUTH_COOKIE_SECURE always wins over this default.
@@ -85,8 +98,19 @@ class DatabaseSettings(BaseSettings):
     name: str = "retailmind_app"
     user: str = "api_rw"
     password: str = "dev-only-password"  # noqa: S105 — dev default; prod injects via secrets
+    #: RM_DB_PASSWORD_FILE — the production form. The overlay mounts the
+    #: secret and sets only this; without the field below pydantic's
+    #: ``extra="ignore"`` swallows it and the app quietly falls back to the
+    #: dev password above, which fails authentication against a database that
+    #: was initialised from the same secret file.
+    password_file: str | None = None
     pool_size: int = 10
     sslmode: str = "disable"  # TODO(S8): map to asyncpg ssl context for the cloud profile
+
+    def model_post_init(self, __context: object) -> None:
+        """Resolve ``*_FILE`` indirection."""
+        if self.password_file:
+            self.password = read_secret(self.password_file)
 
     @property
     def async_dsn(self) -> str:

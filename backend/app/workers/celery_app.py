@@ -68,4 +68,14 @@ celery_app.conf.update(
     },
 )
 
-celery_app.autodiscover_tasks(["app.workers.tasks"])
+#: Imported explicitly rather than autodiscovered.
+#:
+#: `autodiscover_tasks(["app.workers.tasks"])` looks for a `tasks` submodule
+#: *inside* each package it is given — so it searched for
+#: `app.workers.tasks.tasks`, found nothing, and registered nothing. The worker
+#: still started, still reported ready, and still connected to the broker; it
+#: simply had no tasks. Every scheduled job beat published came back
+#: "Received unregistered task", once every ten minutes, in a log nobody was
+#: reading. An explicit list cannot fail this way: a wrong module name is an
+#: ImportError at startup instead of silence.
+celery_app.conf.imports = ("app.workers.tasks.notifications",)

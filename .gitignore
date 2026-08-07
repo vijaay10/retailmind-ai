@@ -24,6 +24,15 @@ frontend/out/
 *.pem
 *.key
 secrets/
+# The mount target has to exist in a fresh clone, and the instructions for
+# filling it have to ship with it — `secrets/` above hid both, so a clone had
+# no directory and no way to learn what belongs in it. Git will not descend
+# into an ignored directory, so the directory is re-included first and its
+# contents excluded again; only the two documentation files come back.
+!infra/secrets/
+infra/secrets/*
+!infra/secrets/.gitignore
+!infra/secrets/README.md
 
 # ── Data (fixtures/seeds in-repo are the ONLY data in git) ──
 *.duckdb

@@ -2,9 +2,30 @@
 # Usage: docker compose -f compose.yml -f compose.dev.yml up
 services:
   api:
-    command: ["api"]
+    # `api-reload` runs a single watching process. The plain `api` command
+    # runs several workers, and a reload signal to one of them reloads one.
+    command: ["api-reload"]
     volumes:
-      - ../../backend/app:/srv/app:ro   # hot-reload mount
+      # /srv/backend/app, not /srv/app: the image copies `backend/` to
+      # /srv/backend and imports from there. The old mount landed outside the
+      # import path, so hot reload silently did nothing — the container served
+      # the code baked into the image and every edit looked like it had no
+      # effect.
+      - ../../backend/app:/srv/backend/app:ro
+    environment:
+      RM_APP_LOG_LEVEL: DEBUG
+
+  ui:
+    # Streamlit reruns the script on every interaction, so mounting the source
+    # is all the reload it needs.
+    volumes:
+      - ../../ui:/srv/ui:ro
+    environment:
+      RM_APP_LOG_LEVEL: DEBUG
+
+  worker:
+    volumes:
+      - ../../backend/app:/srv/backend/app:ro
     environment:
       RM_APP_LOG_LEVEL: DEBUG
 

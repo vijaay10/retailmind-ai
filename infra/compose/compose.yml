@@ -56,8 +56,104 @@ services:
       # (default 8090 — 8080 is a popular squat; TODO(S1): nginx edge fronts this)
       - "${RM_API_PORT:-8090}:8000"
 
-  # worker / beat / frontend / edge(nginx) / airflow services land in S1–S3
-  # (DevOps design §2 service inventory). Scaffold keeps the bootable core.
+  ui:
+    build:
+      context: ../..
+      dockerfile: infra/docker/ui.Dockerfile
+    environment:
+      # In-cluster address. The browser never talks to the API directly — the
+      # edge routes /api to it — so this stays on the internal network.
+      RM_API_BASE_URL: ${RM_API_BASE_URL:-http://api:8000}
+    env_file:
+      - path: ../../.env
+        required: false
+    networks: [edge, app]
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits: {memory: 768M, cpus: "1.0"}
+    ports:
+      - "${RM_UI_PORT:-8501}:8501"
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    command: ["worker"]
+    # Same image as the API, deliberately: a worker built separately is a
+    # worker running different code from the API that enqueued the task.
+    environment:
+      RM_DB_HOST: ${RM_DB_HOST:-postgres}
+      RM_DB_PORT: ${RM_DB_PORT:-5432}
+      RM_DB_NAME: ${RM_DB_NAME:-retailmind_app}
+      RM_DB_USER: ${RM_DB_USER:-api_rw}
+      RM_DB_PASSWORD: ${RM_DB_PASSWORD:-dev-only-password}
+      RM_REDIS_CACHE_URL: ${RM_REDIS_CACHE_URL:-redis://redis-cache:6379/0}
+      RM_REDIS_STATE_URL: ${RM_REDIS_STATE_URL:-redis://redis-state:6379/0}
+      # The broker lives on the durable Redis, never the cache: a broker on an
+      # LRU-evicting instance drops queued tasks under memory pressure and
+      # nothing reports it. Set explicitly rather than left to the code's
+      # default, which is localhost — inside a container that is the container
+      # itself, so a worker without this starts, stays up, and consumes
+      # nothing.
+      RM_CELERY_BROKER_URL: ${RM_CELERY_BROKER_URL:-redis://redis-state:6379/1}
+      RM_CELERY_RESULT_BACKEND: ${RM_CELERY_RESULT_BACKEND:-redis://redis-state:6379/2}
+    env_file:
+      - path: ../../.env
+        required: false
+    networks: [app]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-state:
+        condition: service_healthy
+    healthcheck:
+      # CMD-SHELL, not CMD: the exec form runs no shell, so `$HOSTNAME` stayed
+      # a literal, the ping addressed a node name that does not exist, and the
+      # worker was permanently unhealthy while consuming tasks perfectly well.
+      # Pinning the ping to *this* container's node is still the right check —
+      # an unpinned ping is answered by any worker on the broker, so a dead
+      # container stays "healthy" as long as a sibling replies.
+      test: ["CMD-SHELL", "python -m celery -A app.workers.celery_app inspect ping -d celery@$$HOSTNAME"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits: {memory: 768M, cpus: "1.0"}
+
+  beat:
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    command: ["beat"]
+    # Exactly one. Two schedulers against one broker double every sweep, and
+    # the duplicate is invisible until somebody reads the notification volume.
+    environment:
+      RM_DB_HOST: ${RM_DB_HOST:-postgres}
+      RM_DB_PASSWORD: ${RM_DB_PASSWORD:-dev-only-password}
+      RM_REDIS_STATE_URL: ${RM_REDIS_STATE_URL:-redis://redis-state:6379/0}
+      # Same broker as the worker, for the same reason — a beat pointed at
+      # localhost publishes every schedule into a broker nobody consumes.
+      RM_CELERY_BROKER_URL: ${RM_CELERY_BROKER_URL:-redis://redis-state:6379/1}
+      RM_CELERY_RESULT_BACKEND: ${RM_CELERY_RESULT_BACKEND:-redis://redis-state:6379/2}
+    env_file:
+      - path: ../../.env
+        required: false
+    networks: [app]
+    depends_on:
+      redis-state:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: 1
+      resources:
+        limits: {memory: 256M, cpus: "0.5"}
 
   postgres:
     image: postgres:16.4
