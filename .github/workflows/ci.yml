@@ -118,5 +118,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
       - run: uv sync --all-packages
+      # Blocking. The contract reports "1 kept, 0 broken" across 144 files
+      # today, so gating costs nothing now and is the only thing that keeps
+      # it true tomorrow. It was advisory from the days when the module
+      # skeletons did not yet import each other; that reason expired, and an
+      # advisory check on the architecture claim this project leads with was
+      # a green tick guarding nothing.
       - run: cd backend && uv run lint-imports --config ../pyproject.toml
-        continue-on-error: true   # TODO(S1): enforce once module skeletons import each other

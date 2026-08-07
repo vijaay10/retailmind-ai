@@ -15,15 +15,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  deps:
+  # Named for what it is. Both jobs below report success regardless of what
+  # they find, so the check list must not imply otherwise — a green "sast" is
+  # read as "no findings", and here it means "not yet triaged".
+  deps-advisory:
+    name: deps (advisory — does not block)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
       - run: uv sync --all-packages
-      - run: uv run pip-audit || true   # TODO(S1): fail on critical, 7-day SLA on high
+      # TODO: gate on critical, 7-day SLA on high. Needs a triage budget:
+      # a full transitive tree will surface advisories on unrelated changes.
+      - run: uv run pip-audit || true
 
-  sast:
+  sast-advisory:
+    name: sast (advisory — does not block)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
