@@ -1,15 +1,24 @@
 name: dbt-ci
 
-# Slim CI for the dbt project (ETL design §35): state:modified+ against an
-# ephemeral schema with row-count diffs. TODO(S2): activate when first models land.
+# The warehouse's own contract. Runs on any change to the dbt project *or* to
+# the generators that feed it — a generator that starts emitting a null into a
+# not-null column breaks the models, and the failure belongs here rather than
+# in ten unrelated API suites.
 
 on:
   pull_request:
-    paths: ["data_platform/dbt/**"]
+    paths:
+      - "data_platform/dbt/**"
+      - "data_platform/ingestion/**"
+      - "data_platform/tests/integration/**"
 
 jobs:
-  dbt:
+  models:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - run: echo "TODO(S2) dbt build --select state:modified+ (DuckDB CI profile)"
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --all-packages
+      - name: Build every model and run its tests
+        run: uv run pytest data_platform/tests/integration -m integration -q

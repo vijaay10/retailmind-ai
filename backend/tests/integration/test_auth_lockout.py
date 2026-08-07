@@ -3,15 +3,50 @@
 Kept in its own module because it burns login attempts against a shared seeded
 user: mixing it with the flow tests would make their failure counts depend on
 execution order.
+
+**And it unlocks the account afterwards.** Lockout is derived from the
+`auth_event` ledger rather than from a counter column, so leaving those rows
+behind leaves the account locked for every later suite. That dependency was
+invisible while each suite spent three minutes building its own warehouse —
+the lockout window expired during the build — and surfaced the moment the
+warehouse became shared and the suites started running back to back. A test
+that only passes because the suite is slow is a test waiting to fail.
 """
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import text
 
 pytestmark = pytest.mark.integration
 
-TARGET = "yusuf@northwind.example"  # finance user, untouched by the flow tests
+TARGET = "yusuf@northwind.example"  # finance; other suites sign in as this user too
 CORRECT = "ChangeMe-Demo1!"  # noqa: S105 — seeded demo credential
+
+
+@pytest.fixture(autouse=True)
+async def unlock_afterwards(migrated_db: dict[str, str]):  # type: ignore[no-untyped-def]
+    """Clear this module's failed logins so the account is usable again.
+
+    Autouse and after every test, not once per module: a failure part-way
+    through would otherwise leave the account locked for everything that
+    follows, and the resulting errors would point at innocent suites.
+    """
+    yield
+
+    from app.infrastructure.db.session import create_engine
+
+    engine = create_engine()
+    async with engine.begin() as conn:
+        # Lockout counts `login.failed` rows for a user id inside a window, so
+        # clearing this user's failures is exactly the unlock.
+        await conn.execute(
+            text(
+                "DELETE FROM auth_event WHERE event = 'login.failed' AND user_id = "
+                "(SELECT id FROM app_user WHERE email = :email)"
+            ),
+            {"email": TARGET},
+        )
+    await engine.dispose()
 
 
 async def test_repeated_failures_lock_the_account(client: AsyncClient) -> None:
@@ -41,8 +76,6 @@ async def test_failed_attempts_are_recorded_in_the_security_ledger(
     These rows are written and then an exception is raised; without an explicit
     mid-request commit they would roll back, and lockout would never trigger.
     """
-    from sqlalchemy import text
-
     from app.infrastructure.db.session import create_engine
 
     await client.post(

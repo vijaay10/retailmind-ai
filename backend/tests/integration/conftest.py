@@ -15,6 +15,8 @@ pytest.importorskip("testcontainers", reason="integration extra not installed")
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from testcontainers.postgres import PostgresContainer  # noqa: E402
 
+from tests.integration import warehouse  # noqa: E402
+
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 
 
@@ -77,3 +79,90 @@ async def client(migrated_db: dict[str, str]) -> AsyncIterator[AsyncClient]:
     async with AsyncClient(transport=transport, base_url="http://test") as http:
         yield http
     await app.state.engine.dispose()
+
+
+# ── Shared warehouse and client ──────────────────────────────────────
+
+
+@pytest.fixture(scope="session")
+def warehouse_builder(tmp_path_factory: pytest.TempPathFactory):  # type: ignore[no-untyped-def]
+    """Build a warehouse of a given shape once per session.
+
+    Cached on the shape rather than on the requesting module, so a suite asking
+    for the same estate as an earlier one pays nothing. This is what turns a
+    thirty-minute integration run into a few minutes — and a thirty-minute job
+    is one that never runs in CI.
+    """
+    built: dict[str, tuple[Path, Path]] = {}
+
+    def make(shape: warehouse.Shape) -> tuple[Path, Path]:
+        """Returns the warehouse path and the root it was built under."""
+        if shape.slug not in built:
+            root = tmp_path_factory.mktemp(shape.slug)
+            built[shape.slug] = (warehouse.build(shape, root), root)
+        return built[shape.slug]
+
+    return make
+
+
+@pytest.fixture(scope="session")
+def estate_warehouse(warehouse_builder) -> Path:  # type: ignore[no-untyped-def]
+    """A realistic estate: ten stores over nine weeks."""
+    return warehouse_builder(warehouse.ESTATE)[0]  # type: ignore[no-any-return]
+
+
+@pytest.fixture(scope="session")
+def deep_warehouse(warehouse_builder) -> Path:  # type: ignore[no-untyped-def]
+    """Deep history, a narrow estate, and a real training run over it.
+
+    Forecast suites assert on published predictions and on the accuracy
+    scoreboard, so the models have to have actually been trained — a fixture
+    that only builds the marts would leave every forecast endpoint empty and
+    every assertion about bands trivially unreachable.
+    """
+    path, root = warehouse_builder(warehouse.DEEP_HISTORY)
+    warehouse.train_forecasts(path, root)
+    return path  # type: ignore[no-any-return]
+
+
+async def _client_for(warehouse_path: Path) -> AsyncIterator[AsyncClient]:
+    os.environ["RM_WAREHOUSE_DUCKDB_PATH"] = str(warehouse_path)
+    # No Redis in the test process: a cache shared across suites would serve
+    # one suite's rows to another's assertions.
+    os.environ.pop("RM_REDIS_CACHE_URL", None)
+
+    from app.main import create_app
+
+    app = create_app()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
+        yield http
+    await app.state.engine.dispose()
+
+
+@pytest.fixture
+async def api(migrated_db: dict[str, str], estate_warehouse: Path) -> AsyncIterator[AsyncClient]:
+    """A client over the shared estate warehouse.
+
+    Function-scoped even though the warehouse is not: the app holds a database
+    engine and a cache, and leaking those between tests is how one test's
+    connection pool becomes another's flake.
+    """
+    async for client in _client_for(estate_warehouse):
+        yield client
+
+
+@pytest.fixture
+async def deep_api(migrated_db: dict[str, str], deep_warehouse: Path) -> AsyncIterator[AsyncClient]:
+    """The same, over the deep-history warehouse."""
+    async for client in _client_for(deep_warehouse):
+        yield client
+
+
+async def auth_headers(client: AsyncClient, role: str = "ceo") -> dict[str, str]:
+    """Sign in as one of the seeded demo users."""
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": warehouse.USERS[role], "password": warehouse.DEMO_PASSWORD},
+    )
+    assert response.status_code == 200, response.text
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}

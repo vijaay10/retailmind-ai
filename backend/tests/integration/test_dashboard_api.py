@@ -6,168 +6,29 @@ dashboard makes — weekday-aligned comparison, dollar-ranked attention,
 accuracy travelling with forecasts — not merely that the endpoints respond.
 """
 
-import os
-import subprocess
-from collections.abc import AsyncIterator, Iterator
-from datetime import date, timedelta
-from pathlib import Path
+from datetime import date
 
 import pytest
 
 pytest.importorskip("testcontainers", reason="integration extra not installed")
-from httpx import ASGITransport, AsyncClient  # noqa: E402
+from httpx import AsyncClient  # noqa: E402
+
+from tests.integration.conftest import auth_headers  # noqa: E402
+from tests.integration.warehouse import LAST_DAY  # noqa: E402
 
 pytestmark = pytest.mark.integration
-
-REPO = Path(__file__).resolve().parents[3]
-DBT_DIR = REPO / "data_platform" / "dbt"
-LAST_DAY = date(2026, 7, 21)
-HISTORY_DAYS = 21
-DEMO_PASSWORD = "ChangeMe-Demo1!"  # noqa: S105 — seeded demo credential
-
-USERS = {
-    "ceo": "priya@northwind.example",
-    "finance": "yusuf@northwind.example",
-    "store_manager": "lena@northwind.example",
-    "inventory": "aisha@northwind.example",
-}
-
-
-@pytest.fixture(scope="module")
-def dashboard_warehouse(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
-    """Three weeks of history through the real pipeline, then dbt."""
-    import sys
-
-    sys.path.insert(0, str(REPO / "data_platform"))
-
-    from ingestion.connectors.csv_files import CsvFileConnector
-    from ingestion.core.config import EtlSettings
-    from ingestion.core.duck import connect
-    from ingestion.domain.schema import SourceSchema
-    from ingestion.domain.window import Window
-    from ingestion.generators import (
-        fulfilment,
-        inventory_files,
-        pos_files,
-        purchase_orders,
-        weather,
-    )
-    from ingestion.pipeline import IngestionPipeline
-
-    root = tmp_path_factory.mktemp("dash_wh")
-    settings = EtlSettings(
-        landing_root=root / "lake",
-        inbox_root=root / "inbox",
-        warehouse_path=root / "wh.duckdb",
-        reject_rate_threshold=0.10,
-    )
-
-    stores = 4
-    for offset in range(HISTORY_DAYS):
-        day = LAST_DAY - timedelta(days=HISTORY_DAYS - 1 - offset)
-        pos_files.generate_day(
-            settings.inbox_dir("pos"), day, stores=stores, lines_per_store=20, seed=7 + offset
-        )
-        inventory_files.generate_day(
-            settings.inbox_dir("inventory"),
-            day,
-            stores=stores,
-            skus_per_store=15,
-            seed=600 + offset,
-        )
-        purchase_orders.generate_day(
-            settings.inbox_dir("purchasing"),
-            day,
-            stores=stores,
-            lines=30,
-            seed=900 + offset,
-            as_of=LAST_DAY,
-        )
-        # Weather and fulfilment each land one estate-wide file per day
-        # rather than one per store, which is why their completeness
-        # check counts a single unit below.
-        weather.generate_day(settings.inbox_dir("weather"), day, history_end=LAST_DAY)
-        fulfilment.generate_day(
-            settings.inbox_dir("fulfilment"),
-            day,
-            stores=stores,
-            history_end=LAST_DAY,
-        )
-
-    schema_root = REPO / "data_platform" / "ingestion" / "schemas"
-    window = Window(LAST_DAY - timedelta(days=HISTORY_DAYS - 1), LAST_DAY + timedelta(days=1))
-    conn = connect(settings.warehouse_path)
-    # Purchasing arrives as one file for the whole estate rather than one per
-    # store, so its completeness check counts a single unit.
-    for source, table, units in (
-        ("pos", "sales", stores),
-        ("inventory", "positions", stores),
-        ("purchasing", "orders", 1),
-        ("weather", "observations", 1),
-        ("fulfilment", "deliveries", 1),
-    ):
-        schema = SourceSchema.from_yaml(schema_root / source / f"{table}.yml")
-        connector = CsvFileConnector(
-            schema=schema, settings=settings, connection=conn, expected_units=units
-        )
-        summary = IngestionPipeline(connector=connector, settings=settings, connection=conn).run(
-            window
-        )
-        assert not summary.quarantined, f"{source}: {summary.quarantined}"
-    conn.close()
-
-    env = {
-        **os.environ,
-        "RM_WAREHOUSE_DUCKDB_PATH": str(settings.warehouse_path),
-        "DBT_TARGET_PATH": str(root / "dbt_target"),
-    }
-    for step in ("seed", "snapshot", "build"):
-        result = subprocess.run(  # noqa: S603
-            ["uv", "run", "dbt", step, "--profiles-dir", "."],  # noqa: S607
-            cwd=DBT_DIR,
-            env=env,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 0, f"dbt {step} failed:\n{result.stdout[-3000:]}"
-
-    yield settings.warehouse_path
-
-
-@pytest.fixture
-async def client(
-    migrated_db: dict[str, str], dashboard_warehouse: Path
-) -> AsyncIterator[AsyncClient]:
-    os.environ["RM_WAREHOUSE_DUCKDB_PATH"] = str(dashboard_warehouse)
-    os.environ.pop("RM_REDIS_CACHE_URL", None)
-
-    from app.main import create_app
-
-    app = create_app()
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
-        yield http
-    await app.state.engine.dispose()
-
-
-async def _auth(client: AsyncClient, role: str) -> dict[str, str]:
-    response = await client.post(
-        "/api/v1/auth/login", json={"email": USERS[role], "password": DEMO_PASSWORD}
-    )
-    assert response.status_code == 200, response.text
-    return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
 
 # ── 1. Today's revenue ───────────────────────────────────────────────
 
 
 async def test_revenue_today_anchors_on_warehouse_data_not_the_clock(
-    client: AsyncClient,
+    api: AsyncClient,
 ) -> None:
     """A dashboard showing an empty 'today' because the load has not finished
     is a dashboard nobody trusts."""
-    response = await client.get(
-        "/api/v1/dashboard/revenue/today", headers=await _auth(client, "ceo")
+    response = await api.get(
+        "/api/v1/dashboard/revenue/today", headers=await auth_headers(api, "ceo")
     )
     assert response.status_code == 200
 
@@ -177,11 +38,11 @@ async def test_revenue_today_anchors_on_warehouse_data_not_the_clock(
 
 
 async def test_revenue_today_compares_against_the_same_weekday(
-    client: AsyncClient,
+    api: AsyncClient,
 ) -> None:
     """Comparing Monday to Sunday reports a weekday artefact as a business signal."""
     body = (
-        await client.get("/api/v1/dashboard/revenue/today", headers=await _auth(client, "ceo"))
+        await api.get("/api/v1/dashboard/revenue/today", headers=await auth_headers(api, "ceo"))
     ).json()
 
     business = date.fromisoformat(body["business_date"])
@@ -190,9 +51,9 @@ async def test_revenue_today_compares_against_the_same_weekday(
     assert business.weekday() == comparison.weekday()
 
 
-async def test_revenue_cards_carry_values_and_direction(client: AsyncClient) -> None:
+async def test_revenue_cards_carry_values_and_direction(api: AsyncClient) -> None:
     body = (
-        await client.get("/api/v1/dashboard/revenue/today", headers=await _auth(client, "ceo"))
+        await api.get("/api/v1/dashboard/revenue/today", headers=await auth_headers(api, "ceo"))
     ).json()
 
     cards = {card["key"]: card for card in body["cards"]}
@@ -201,10 +62,10 @@ async def test_revenue_cards_carry_values_and_direction(client: AsyncClient) -> 
     assert cards["net_revenue"]["direction"] in {"up", "down", "flat"}
 
 
-async def test_small_movements_report_as_flat(client: AsyncClient) -> None:
+async def test_small_movements_report_as_flat(api: AsyncClient) -> None:
     """Noise must not be styled as news."""
     body = (
-        await client.get("/api/v1/dashboard/revenue/today", headers=await _auth(client, "ceo"))
+        await api.get("/api/v1/dashboard/revenue/today", headers=await auth_headers(api, "ceo"))
     ).json()
     for card in body["cards"]:
         change = card["change_pct"]
@@ -215,11 +76,11 @@ async def test_small_movements_report_as_flat(client: AsyncClient) -> None:
 # ── 2. Revenue trend ─────────────────────────────────────────────────
 
 
-async def test_revenue_trend_returns_a_daily_series(client: AsyncClient) -> None:
-    response = await client.get(
+async def test_revenue_trend_returns_a_daily_series(api: AsyncClient) -> None:
+    response = await api.get(
         "/api/v1/dashboard/revenue/trend",
         params={"days": 14},
-        headers=await _auth(client, "ceo"),
+        headers=await auth_headers(api, "ceo"),
     )
     assert response.status_code == 200
 
@@ -230,12 +91,12 @@ async def test_revenue_trend_returns_a_daily_series(client: AsyncClient) -> None
     assert dates == sorted(dates), "series must be chronological for charting"
 
 
-async def test_trend_carries_snapshot_provenance(client: AsyncClient) -> None:
+async def test_trend_carries_snapshot_provenance(api: AsyncClient) -> None:
     body = (
-        await client.get(
+        await api.get(
             "/api/v1/dashboard/revenue/trend",
             params={"days": 14},
-            headers=await _auth(client, "ceo"),
+            headers=await auth_headers(api, "ceo"),
         )
     ).json()
     assert body["meta"]["data_snapshot_id"]
@@ -245,9 +106,9 @@ async def test_trend_carries_snapshot_provenance(client: AsyncClient) -> None:
 # ── 3. Growth ────────────────────────────────────────────────────────
 
 
-async def test_growth_reports_three_horizons(client: AsyncClient) -> None:
+async def test_growth_reports_three_horizons(api: AsyncClient) -> None:
     """A bad day, a bad week, and a bad month need different reactions."""
-    response = await client.get("/api/v1/dashboard/growth", headers=await _auth(client, "ceo"))
+    response = await api.get("/api/v1/dashboard/growth", headers=await auth_headers(api, "ceo"))
     assert response.status_code == 200
 
     horizons = {row["horizon"]: row for row in response.json()["horizons"]}
@@ -256,8 +117,10 @@ async def test_growth_reports_three_horizons(client: AsyncClient) -> None:
     assert horizons["week"]["current_revenue"] > 0
 
 
-async def test_growth_change_is_arithmetically_consistent(client: AsyncClient) -> None:
-    body = (await client.get("/api/v1/dashboard/growth", headers=await _auth(client, "ceo"))).json()
+async def test_growth_change_is_arithmetically_consistent(api: AsyncClient) -> None:
+    body = (
+        await api.get("/api/v1/dashboard/growth", headers=await auth_headers(api, "ceo"))
+    ).json()
     for row in body["horizons"]:
         expected = round(row["current_revenue"] - row["prior_revenue"], 2)
         assert row["change_amount"] == pytest.approx(expected, abs=0.02)
@@ -274,9 +137,9 @@ async def test_growth_change_is_arithmetically_consistent(client: AsyncClient) -
 # ── 4. Profit ────────────────────────────────────────────────────────
 
 
-async def test_profit_returns_margin_cards_and_category_split(client: AsyncClient) -> None:
-    response = await client.get(
-        "/api/v1/dashboard/profit", params={"days": 7}, headers=await _auth(client, "finance")
+async def test_profit_returns_margin_cards_and_category_split(api: AsyncClient) -> None:
+    response = await api.get(
+        "/api/v1/dashboard/profit", params={"days": 7}, headers=await auth_headers(api, "finance")
     )
     assert response.status_code == 200
 
@@ -287,10 +150,10 @@ async def test_profit_returns_margin_cards_and_category_split(client: AsyncClien
     assert "category" in body["by_category"][0]
 
 
-async def test_profit_requires_the_profitability_module(client: AsyncClient) -> None:
+async def test_profit_requires_the_profitability_module(api: AsyncClient) -> None:
     """Cost is the number most organisations restrict; revenue access is not enough."""
-    response = await client.get(
-        "/api/v1/dashboard/profit", headers=await _auth(client, "store_manager")
+    response = await api.get(
+        "/api/v1/dashboard/profit", headers=await auth_headers(api, "store_manager")
     )
     assert response.status_code == 403
     assert "profitability" in response.json()["hint"]
@@ -300,20 +163,20 @@ async def test_profit_requires_the_profitability_module(client: AsyncClient) -> 
 
 
 async def test_top_products_are_ranked_by_the_requested_metric(
-    client: AsyncClient,
+    api: AsyncClient,
 ) -> None:
     """'Top' is not one question — the ranking metric must actually change the order."""
-    headers = await _auth(client, "ceo")
+    headers = await auth_headers(api, "ceo")
 
     by_revenue = (
-        await client.get(
+        await api.get(
             "/api/v1/dashboard/products/top",
             params={"by": "net_revenue", "limit": 5},
             headers=headers,
         )
     ).json()
     by_units = (
-        await client.get(
+        await api.get(
             "/api/v1/dashboard/products/top",
             params={"by": "units_sold", "limit": 5},
             headers=headers,
@@ -327,12 +190,12 @@ async def test_top_products_are_ranked_by_the_requested_metric(
     assert by_revenue["ranked_by"] == "net_revenue"
 
 
-async def test_top_products_carry_identity_and_margin(client: AsyncClient) -> None:
+async def test_top_products_carry_identity_and_margin(api: AsyncClient) -> None:
     body = (
-        await client.get(
+        await api.get(
             "/api/v1/dashboard/products/top",
             params={"limit": 3},
-            headers=await _auth(client, "ceo"),
+            headers=await auth_headers(api, "ceo"),
         )
     ).json()
     row = body["products"][0]
@@ -342,11 +205,11 @@ async def test_top_products_carry_identity_and_margin(client: AsyncClient) -> No
 # ── 6. Store rankings ────────────────────────────────────────────────
 
 
-async def test_store_rankings_are_ordered_and_numbered(client: AsyncClient) -> None:
-    response = await client.get(
+async def test_store_rankings_are_ordered_and_numbered(api: AsyncClient) -> None:
+    response = await api.get(
         "/api/v1/dashboard/stores/ranking",
         params={"limit": 10},
-        headers=await _auth(client, "ceo"),
+        headers=await auth_headers(api, "ceo"),
     )
     assert response.status_code == 200
 
@@ -356,22 +219,22 @@ async def test_store_rankings_are_ordered_and_numbered(client: AsyncClient) -> N
     assert revenues == sorted(revenues, reverse=True)
 
 
-async def test_store_rows_carry_their_peer_cluster(client: AsyncClient) -> None:
+async def test_store_rows_carry_their_peer_cluster(api: AsyncClient) -> None:
     """Comparing a flagship to an outlet is malpractice; the cluster makes
     correct grouping possible even without a filter."""
     body = (
-        await client.get("/api/v1/dashboard/stores/ranking", headers=await _auth(client, "ceo"))
+        await api.get("/api/v1/dashboard/stores/ranking", headers=await auth_headers(api, "ceo"))
     ).json()
     assert all(row.get("store_cluster") for row in body["stores"])
 
 
-async def test_cluster_filter_scopes_the_league_table(client: AsyncClient) -> None:
-    headers = await _auth(client, "ceo")
-    unfiltered = (await client.get("/api/v1/dashboard/stores/ranking", headers=headers)).json()
+async def test_cluster_filter_scopes_the_league_table(api: AsyncClient) -> None:
+    headers = await auth_headers(api, "ceo")
+    unfiltered = (await api.get("/api/v1/dashboard/stores/ranking", headers=headers)).json()
     cluster = unfiltered["stores"][0]["store_cluster"]
 
     filtered = (
-        await client.get(
+        await api.get(
             "/api/v1/dashboard/stores/ranking", params={"cluster": cluster}, headers=headers
         )
     ).json()
@@ -383,11 +246,11 @@ async def test_cluster_filter_scopes_the_league_table(client: AsyncClient) -> No
 
 
 async def test_inventory_risk_ranks_by_rate_not_absolute_count(
-    client: AsyncClient,
+    api: AsyncClient,
 ) -> None:
     """Four stockouts in twenty positions beats ten in five thousand."""
-    response = await client.get(
-        "/api/v1/dashboard/inventory/risk", headers=await _auth(client, "inventory")
+    response = await api.get(
+        "/api/v1/dashboard/inventory/risk", headers=await auth_headers(api, "inventory")
     )
     assert response.status_code == 200
 
@@ -396,20 +259,20 @@ async def test_inventory_risk_ranks_by_rate_not_absolute_count(
     assert rates == sorted(rates, reverse=True)
 
 
-async def test_inventory_risk_reads_a_single_position_date(client: AsyncClient) -> None:
+async def test_inventory_risk_reads_a_single_position_date(api: AsyncClient) -> None:
     """Positions are semi-additive: summing them across days invents stock."""
     body = (
-        await client.get(
-            "/api/v1/dashboard/inventory/risk", headers=await _auth(client, "inventory")
+        await api.get(
+            "/api/v1/dashboard/inventory/risk", headers=await auth_headers(api, "inventory")
         )
     ).json()
     assert body["position_date"] == LAST_DAY.isoformat()
 
 
-async def test_planted_stockouts_surface_in_the_risk_tile(client: AsyncClient) -> None:
+async def test_planted_stockouts_surface_in_the_risk_tile(api: AsyncClient) -> None:
     body = (
-        await client.get(
-            "/api/v1/dashboard/inventory/risk", headers=await _auth(client, "inventory")
+        await api.get(
+            "/api/v1/dashboard/inventory/risk", headers=await auth_headers(api, "inventory")
         )
     ).json()
     assert any(row["stockout_rate"] > 0 for row in body["at_risk"])
@@ -418,12 +281,12 @@ async def test_planted_stockouts_surface_in_the_risk_tile(client: AsyncClient) -
 # ── 8. Forecast ──────────────────────────────────────────────────────
 
 
-async def test_forecast_returns_a_series_with_intervals(client: AsyncClient) -> None:
+async def test_forecast_returns_a_series_with_intervals(api: AsyncClient) -> None:
     """A bare-point forecast is a forbidden state in this product."""
-    response = await client.get(
+    response = await api.get(
         "/api/v1/dashboard/forecast",
         params={"days": 14},
-        headers=await _auth(client, "ceo"),
+        headers=await auth_headers(api, "ceo"),
     )
     assert response.status_code == 200
 
@@ -441,11 +304,11 @@ async def test_forecast_returns_a_series_with_intervals(client: AsyncClient) -> 
         assert point["yhat_revenue_lower"] <= point["yhat_revenue"] <= point["yhat_revenue_upper"]
 
 
-async def test_forecast_publishes_its_own_accuracy(client: AsyncClient) -> None:
+async def test_forecast_publishes_its_own_accuracy(api: AsyncClient) -> None:
     """Accuracy travels with the forecast, never behind a separate click: a
     planner needs to know how wrong the model has been."""
     body = (
-        await client.get("/api/v1/dashboard/forecast", headers=await _auth(client, "ceo"))
+        await api.get("/api/v1/dashboard/forecast", headers=await auth_headers(api, "ceo"))
     ).json()
 
     accuracy = body["accuracy"]
@@ -456,9 +319,9 @@ async def test_forecast_publishes_its_own_accuracy(client: AsyncClient) -> None:
     assert accuracy["forecast_days_evaluated"] > 0
 
 
-async def test_forecast_requires_forecast_permission(client: AsyncClient) -> None:
-    response = await client.get(
-        "/api/v1/dashboard/forecast", headers=await _auth(client, "store_manager")
+async def test_forecast_requires_forecast_permission(api: AsyncClient) -> None:
+    response = await api.get(
+        "/api/v1/dashboard/forecast", headers=await auth_headers(api, "store_manager")
     )
     # Store managers hold forecasts.read, so this succeeds — the assertion
     # documents the intended grant rather than a denial.
@@ -468,8 +331,8 @@ async def test_forecast_requires_forecast_permission(client: AsyncClient) -> Non
 # ── 9. Alerts ────────────────────────────────────────────────────────
 
 
-async def test_alerts_return_open_items_with_expected_bands(client: AsyncClient) -> None:
-    response = await client.get("/api/v1/dashboard/alerts", headers=await _auth(client, "ceo"))
+async def test_alerts_return_open_items_with_expected_bands(api: AsyncClient) -> None:
+    response = await api.get("/api/v1/dashboard/alerts", headers=await auth_headers(api, "ceo"))
     assert response.status_code == 200
 
     body = response.json()
@@ -481,16 +344,20 @@ async def test_alerts_return_open_items_with_expected_bands(client: AsyncClient)
     assert alert["data_snapshot_id"]
 
 
-async def test_alerts_are_ordered_most_severe_first(client: AsyncClient) -> None:
+async def test_alerts_are_ordered_most_severe_first(api: AsyncClient) -> None:
     """Alphabetical severity ordering would put 'critical' after 'warn'."""
-    body = (await client.get("/api/v1/dashboard/alerts", headers=await _auth(client, "ceo"))).json()
+    body = (
+        await api.get("/api/v1/dashboard/alerts", headers=await auth_headers(api, "ceo"))
+    ).json()
     rank = {"critical": 0, "warn": 1, "info": 2}
     severities = [rank[a["severity"]] for a in body["alerts"]]
     assert severities == sorted(severities)
 
 
-async def test_alert_deviation_is_signed_against_the_band(client: AsyncClient) -> None:
-    body = (await client.get("/api/v1/dashboard/alerts", headers=await _auth(client, "ceo"))).json()
+async def test_alert_deviation_is_signed_against_the_band(api: AsyncClient) -> None:
+    body = (
+        await api.get("/api/v1/dashboard/alerts", headers=await auth_headers(api, "ceo"))
+    ).json()
     for alert in body["alerts"]:
         if alert["observed"] < alert["expected_low"]:
             assert alert["deviation_pct"] < 0
@@ -499,9 +366,9 @@ async def test_alert_deviation_is_signed_against_the_band(client: AsyncClient) -
 # ── 10. Recommendations ──────────────────────────────────────────────
 
 
-async def test_recommendations_are_ranked_by_impact(client: AsyncClient) -> None:
-    response = await client.get(
-        "/api/v1/dashboard/recommendations", headers=await _auth(client, "ceo")
+async def test_recommendations_are_ranked_by_impact(api: AsyncClient) -> None:
+    response = await api.get(
+        "/api/v1/dashboard/recommendations", headers=await auth_headers(api, "ceo")
     )
     assert response.status_code == 200
 
@@ -512,11 +379,11 @@ async def test_recommendations_are_ranked_by_impact(client: AsyncClient) -> None
 
 
 async def test_recommendations_state_their_estimation_method(
-    client: AsyncClient,
+    api: AsyncClient,
 ) -> None:
     """An impact figure without a stated method is not actionable."""
     body = (
-        await client.get("/api/v1/dashboard/recommendations", headers=await _auth(client, "ceo"))
+        await api.get("/api/v1/dashboard/recommendations", headers=await auth_headers(api, "ceo"))
     ).json()
     rec = body["recommendations"][0]
     assert "method" in rec["expected_impact"]
@@ -527,8 +394,8 @@ async def test_recommendations_state_their_estimation_method(
 # ── Composite ────────────────────────────────────────────────────────
 
 
-async def test_executive_overview_assembles_every_tile(client: AsyncClient) -> None:
-    response = await client.get("/api/v1/dashboard/executive", headers=await _auth(client, "ceo"))
+async def test_executive_overview_assembles_every_tile(api: AsyncClient) -> None:
+    response = await api.get("/api/v1/dashboard/executive", headers=await auth_headers(api, "ceo"))
     assert response.status_code == 200
 
     body = response.json()
@@ -543,11 +410,11 @@ async def test_executive_overview_assembles_every_tile(client: AsyncClient) -> N
 
 
 async def test_overview_names_the_sections_a_role_cannot_see(
-    client: AsyncClient,
+    api: AsyncClient,
 ) -> None:
     """Naming the gap lets the UI explain it instead of rendering a hole."""
-    response = await client.get(
-        "/api/v1/dashboard/executive", headers=await _auth(client, "finance")
+    response = await api.get(
+        "/api/v1/dashboard/executive", headers=await auth_headers(api, "finance")
     )
     assert response.status_code == 200
 
@@ -558,15 +425,15 @@ async def test_overview_names_the_sections_a_role_cannot_see(
     assert isinstance(body["sections_unavailable"], list)
 
 
-async def test_dashboard_requires_authentication(client: AsyncClient) -> None:
-    assert (await client.get("/api/v1/dashboard/executive")).status_code == 401
+async def test_dashboard_requires_authentication(api: AsyncClient) -> None:
+    assert (await api.get("/api/v1/dashboard/executive")).status_code == 401
 
 
 # ── Documentation ────────────────────────────────────────────────────
 
 
-async def test_openapi_documents_every_dashboard_endpoint(client: AsyncClient) -> None:
-    spec = (await client.get("/api/openapi.json")).json()
+async def test_openapi_documents_every_dashboard_endpoint(api: AsyncClient) -> None:
+    spec = (await api.get("/api/openapi.json")).json()
     for path in (
         "/api/v1/dashboard/revenue/today",
         "/api/v1/dashboard/revenue/trend",

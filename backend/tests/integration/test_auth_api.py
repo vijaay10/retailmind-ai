@@ -8,20 +8,13 @@ tokens, and every seeded role gets exactly the permissions the matrix promises.
 import pytest
 from httpx import AsyncClient
 
+from tests.integration.warehouse import USERS  # noqa: E402
+
 pytestmark = pytest.mark.integration
 
 DEMO_PASSWORD = "ChangeMe-Demo1!"  # noqa: S105 — seeded demo credential
 
 # One seeded user per role (see the sample seed).
-USERS = {
-    "admin": "sam@northwind.example",
-    "ceo": "priya@northwind.example",
-    "regional_manager": "diego@northwind.example",
-    "store_manager": "lena@northwind.example",
-    "marketing": "marcus@northwind.example",
-    "inventory": "aisha@northwind.example",
-    "finance": "yusuf@northwind.example",
-}
 
 
 async def _login(client: AsyncClient, email: str, password: str = DEMO_PASSWORD):
