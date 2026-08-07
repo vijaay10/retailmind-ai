@@ -3,4 +3,3 @@
 /infra/            @OWNER
 /.github/          @OWNER
 /data_platform/dbt/models/marts/  @OWNER   # gold contracts are governance
-/backend/app/infrastructure/llm/  @OWNER   # prompts are reviewed artifacts
