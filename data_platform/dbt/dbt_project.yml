@@ -16,9 +16,6 @@ models:
     staging:
       +schema: staging
       +materialized: view
-    intermediate:
-      +schema: staging
-      +materialized: ephemeral
     marts:
       core:                    # dim_* / fct_* — gold
         +schema: analytics
