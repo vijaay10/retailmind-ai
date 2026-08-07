@@ -117,3 +117,15 @@ class ActorType(StrEnum):
     USER = "user"
     SERVICE = "service"
     SYSTEM = "system"
+
+
+class DecisionAction(StrEnum):
+    """What a human did with a proposed action.
+
+    Deliberately two values. "Snooze" reads as a decision and is not one: it
+    records that nobody wanted to think about it yet, and a queue that fills
+    with snoozed items is a queue nobody trusts.
+    """
+
+    ACCEPTED = "accepted"
+    DISMISSED = "dismissed"

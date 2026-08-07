@@ -31,6 +31,10 @@ import structlog
 
 from app.domain.auth.entities import Principal
 from app.domain.auth.permissions import Permission
+from app.domain.shared.errors import AuthorizationError
+from app.infrastructure.db.repositories.recommendation_decisions import (
+    RecommendationDecisionRepository,
+)
 from app.services.analytics.service import AnalyticsService
 from app.services.recommendations import generators
 from app.services.recommendations.contracts import (
@@ -65,11 +69,125 @@ class _Inputs:
     suppliers: list[dict[str, Any]]
 
 
+#: Which categories go dark when a caller cannot read a given analytics
+#: domain. Used to say *why* a category is missing rather than leaving it
+#: indistinguishable from "nothing to do".
+_CATEGORIES_BY_DOMAIN: dict[str, tuple[Category, ...]] = {
+    "reorder": (Category.INVENTORY,),
+    "inventory_health": (Category.PRICING,),
+    "revenue": (Category.PRICING,),
+    "profitability": (Category.PRICING,),
+    "marketing": (Category.PROMOTION,),
+    "store": (Category.STORE,),
+    "churn": (Category.CUSTOMER, Category.MARKETING),
+    "supplier": (Category.SUPPLIER,),
+}
+
+#: The only two things a person can do with a proposal. "Snooze" reads as a
+#: decision and is not one — see :class:`DecisionAction`.
+_DECISION_ACTIONS = frozenset({"accepted", "dismissed"})
+
+
+class UnknownRecommendationError(LookupError):
+    """The key does not match anything the engine currently proposes.
+
+    Usually means the position moved and the recommendation no longer stands —
+    which is the right moment to refuse, not to record an approval for
+    something that is no longer being advised.
+    """
+
+    def __init__(self, decision_key: str) -> None:
+        super().__init__(
+            f"No current recommendation matches key '{decision_key[:12]}…'. "
+            "It may have been superseded — reload and decide again."
+        )
+        self.decision_key = decision_key
+
+
 class RecommendationService:
     """Turns the platform's analysis into a ranked set of proposed actions."""
 
-    def __init__(self, analytics: AnalyticsService) -> None:
+    def __init__(
+        self,
+        analytics: AnalyticsService,
+        decisions: RecommendationDecisionRepository | None = None,
+    ) -> None:
         self._analytics = analytics
+        self._decisions = decisions
+
+    # ── The decision loop ────────────────────────────────────────────
+
+    async def decide(
+        self,
+        principal: Principal,
+        *,
+        decision_key: str,
+        action: str,
+        reason_code: str | None = None,
+        note: str | None = None,
+        end_date: date | None = None,
+    ) -> dict[str, Any]:
+        """Record what a human decided about one proposed action.
+
+        Acting requires more than reading: `recommendations.act`, which the
+        role matrix grants to the people who own the consequences — inventory,
+        marketing, store and regional managers — and withholds from the
+        broad read-only roles.
+
+        The proposal is re-derived rather than trusted from the request. A
+        client that could name its own action text and expected profit could
+        write "accepted: give everything away, +£10m" into the ledger, and the
+        ledger is the record everyone later reasons from.
+        """
+        authz.require(principal, Permission.RECOMMENDATIONS_ACT)
+        if self._decisions is None:  # pragma: no cover - wiring guard
+            raise RuntimeError("decision ledger not configured")
+
+        if action not in _DECISION_ACTIONS:
+            raise ValueError(f"Unknown decision '{action}'. Use accepted or dismissed.")
+
+        portfolio = await self.recommend(principal, end_date=end_date, limit=MAX_RECOMMENDATIONS)
+        match = next(
+            (item for item in portfolio.recommendations if item.decision_key == decision_key),
+            None,
+        )
+        if match is None:
+            raise UnknownRecommendationError(decision_key)
+
+        decision = await self._decisions.record(
+            decision_key=decision_key,
+            action=action,
+            category=match.category.value,
+            subject=match.subject,
+            action_text=match.action,
+            expected_profit=round(match.impact.profit, 2),
+            estimate_basis=match.impact.basis.value,
+            reason_code=reason_code if action == "dismissed" else None,
+            note=note,
+            decided_by=principal.user_id,
+        )
+        return decision.as_dict()
+
+    async def decision_log(self, principal: Principal, *, limit: int = 50) -> dict[str, Any]:
+        """What this team has decided lately."""
+        authz.require(principal, Permission.RECOMMENDATIONS_READ)
+        if self._decisions is None:  # pragma: no cover - wiring guard
+            return {"decisions": [], "count": 0, "accepted_profit": 0.0}
+
+        entries = await self._decisions.recent(limit=limit)
+        accepted = [item for item in entries if item.action == "accepted"]
+        return {
+            "decisions": [item.as_dict() for item in entries],
+            "count": len(entries),
+            "accepted_profit": round(sum(item.expected_profit or 0.0 for item in accepted), 2),
+        }
+
+    async def decisions_for(self, keys: list[str]) -> dict[str, dict[str, Any]]:
+        """Decisions in force for the given recommendations, if any."""
+        if self._decisions is None or not keys:
+            return {}
+        current = await self._decisions.current(keys)
+        return {key: value.as_dict() for key, value in current.items()}
 
     async def recommend(
         self,
@@ -89,6 +207,7 @@ class RecommendationService:
 
         produced: list[Recommendation] = []
         empty: dict[str, str] = {}
+        blocked = getattr(self, "_unreadable", {})
 
         if Category.INVENTORY in requested:
             found = generators.inventory_recommendations(
@@ -144,6 +263,16 @@ class RecommendationService:
         produced.sort(key=lambda item: item.risk_adjusted_profit, reverse=True)
         ranked = tuple(produced[:limit])
 
+        # A category with no data because the caller cannot read its source is
+        # a different fact from one with nothing to propose, and conflating
+        # them tells a manager "all clear" about a surface they never saw.
+        for domain, reason in blocked.items():
+            for category in _CATEGORIES_BY_DOMAIN.get(domain, ()):
+                if category in requested:
+                    empty[category.value] = (
+                        f"not shown — your role cannot read {domain} analytics ({reason})"
+                    )
+
         portfolio = Portfolio(
             recommendations=ranked,
             categories_requested=requested,
@@ -166,7 +295,17 @@ class RecommendationService:
         return portfolio
 
     async def _load(self, principal: Principal, start: date, end: date) -> _Inputs:
-        """One governed query per supporting relation."""
+        """One governed query per supporting relation.
+
+        A relation the caller may not read yields no rows rather than a 403 for
+        the whole request. The role matrix grants acting and reading
+        independently — a regional manager may accept a reorder without holding
+        inventory analytics — and failing the request would leave those roles
+        with an empty screen instead of the subset they are entitled to. The
+        generators report each unfed category by name, so the gap is stated
+        rather than silently indistinguishable from "nothing to do".
+        """
+        self._unreadable: dict[str, str] = {}
 
         async def query(
             domain: str,
@@ -176,16 +315,20 @@ class RecommendationService:
             dated: bool = True,
             sort_by: str | None = None,
         ) -> list[dict[str, Any]]:
-            answer = await self._analytics.query(
-                principal,
-                domain_key=domain,
-                metrics=metrics,
-                dimensions=dimensions,
-                start_date=start if dated else None,
-                end_date=end if dated else None,
-                sort_by=sort_by,
-                limit=QUERY_LIMIT,
-            )
+            try:
+                answer = await self._analytics.query(
+                    principal,
+                    domain_key=domain,
+                    metrics=metrics,
+                    dimensions=dimensions,
+                    start_date=start if dated else None,
+                    end_date=end if dated else None,
+                    sort_by=sort_by,
+                    limit=QUERY_LIMIT,
+                )
+            except AuthorizationError as error:
+                self._unreadable[domain] = str(error)
+                return []
             return answer.result.rows
 
         reorder = await query(

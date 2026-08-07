@@ -51,6 +51,9 @@ class RecommendationsResponse(ResponseModel):
     )
 
     categories_requested: list[str]
+    decided_count: int = Field(
+        default=0, description="How many of these already carry a recorded decision."
+    )
     categories_empty: dict[str, str] = Field(
         default_factory=dict,
         description=(
@@ -60,3 +63,44 @@ class RecommendationsResponse(ResponseModel):
     )
     caveats: list[str]
     meta: dict[str, Any] = Field(default_factory=dict)
+
+
+class DecisionRequest(BaseModel):
+    """A human's decision about one proposed action."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    decision_key: str = Field(
+        min_length=8,
+        max_length=64,
+        description="From the recommendation's `decision_key`. Identity of the subject acted on.",
+    )
+    action: str = Field(description="accepted | dismissed")
+    reason_code: str | None = Field(
+        default=None,
+        description=(
+            "Why it was dismissed: supplier_constraint | already_planned | "
+            "disagree_forecast | other. Meaningless on an acceptance."
+        ),
+    )
+    note: str | None = Field(default=None, max_length=500)
+
+
+class DecisionResponse(ResponseModel):
+    """What was recorded, read back."""
+
+    decision: dict[str, Any]
+    decided_by: str
+
+
+class DecisionLogResponse(ResponseModel):
+    """The team's recent decisions, newest first."""
+
+    decisions: list[dict[str, Any]]
+    count: int
+    accepted_profit: float = Field(
+        description=(
+            "Expected profit across accepted actions, as estimated when each was "
+            "accepted. Not realised profit — nothing here measures what happened next."
+        )
+    )

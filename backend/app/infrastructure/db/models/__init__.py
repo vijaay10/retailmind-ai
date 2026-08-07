@@ -47,6 +47,7 @@ from app.infrastructure.db.models.platform import (
 )
 from app.infrastructure.db.models.recommendations import (
     Recommendation,
+    RecommendationDecision,
     RecommendationFeedback,
     RecommendationOutcome,
 )
@@ -83,6 +84,7 @@ __all__ = [
     "QuarantineBatch",
     "RcaResult",
     "Recommendation",
+    "RecommendationDecision",
     "RecommendationFeedback",
     "RecommendationOutcome",
     "RefreshToken",

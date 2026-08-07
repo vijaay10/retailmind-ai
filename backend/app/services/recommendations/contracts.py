@@ -37,6 +37,7 @@ that eventually sells, while a 40% markdown destroys margin that cannot be
 recovered. Reversibility is therefore a first-class field, not a footnote.
 """
 
+import hashlib
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
@@ -267,10 +268,24 @@ class Recommendation:
             1.0 - self.confidence
         )
 
+    @property
+    def decision_key(self) -> str:
+        """Stable identity for a decision about this action.
+
+        Digests what the action is *about* — its category and subject — and
+        deliberately not its wording. The engine recomputes every request, so
+        a reorder whose quantity moves from 122 units to 130 is the same
+        decision; keying on the sentence would silently detach the human's
+        approval the moment a number moved.
+        """
+        material = f"{self.category.value}|{self.subject}"
+        return hashlib.sha256(material.encode()).hexdigest()[:32]
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "category": self.category.value,
             "subject": self.subject,
+            "decision_key": self.decision_key,
             "action": self.action,
             "rationale": self.rationale,
             "confidence": round(self.confidence, 4),

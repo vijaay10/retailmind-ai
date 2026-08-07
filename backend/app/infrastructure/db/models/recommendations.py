@@ -20,6 +20,7 @@ from app.infrastructure.db.models.base import (
 )
 from app.infrastructure.db.models.enums import (
     Confidence,
+    DecisionAction,
     DismissReason,
     RecommendationStatus,
     RecommendationType,
@@ -124,3 +125,57 @@ class RecommendationOutcome(Base):
     vs_expected_ratio: Mapped[float | None] = mapped_column(Numeric(8, 4))
 
     recommendation: Mapped[Recommendation] = relationship(back_populates="outcomes")
+
+
+class RecommendationDecision(Base, TenantScopedMixin):
+    """What a human decided about a *computed* recommendation.
+
+    Separate from :class:`RecommendationFeedback`, which hangs off a stored
+    ``recommendation`` row written by the batch rule engine. The analytical
+    engine does not store its proposals: it recomputes them from the warehouse
+    on every request, so there is no row to reference and no foreign key to
+    hang a decision on. Identity comes from ``decision_key`` — a digest of what
+    the action is *about*, not of its wording, so a reorder whose quantity
+    moves from 122 to 130 units is still the same decision.
+
+    The action text, the expected profit, and the estimate basis are snapshot
+    onto the row rather than referenced. The engine's numbers change daily; a
+    ledger that showed today's figure beside yesterday's decision would be
+    quietly rewriting what somebody actually approved.
+    """
+
+    __tablename__ = "recommendation_decision"
+    __table_args__ = (
+        # One current decision per subject. Re-deciding overwrites rather than
+        # appending, so the inbox cannot show a card as both accepted and
+        # dismissed; the audit ledger keeps the history.
+        Index(
+            "uq_recommendation_decision_key",
+            "tenant_id",
+            "decision_key",
+            unique=True,
+        ),
+        Index("ix_recommendation_decision_recent", "tenant_id", "decided_at"),
+        enum_check("action", DecisionAction),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    decision_key: Mapped[str] = mapped_column(
+        comment="Digest of category + subject — stable while the numbers move"
+    )
+    action: Mapped[str] = mapped_column(comment="accepted | dismissed")
+    category: Mapped[str] = mapped_column(comment="Engine category, e.g. inventory | pricing")
+    subject: Mapped[str] = mapped_column(comment="What the action is about, e.g. SKU-1@S2016")
+    action_text: Mapped[str] = mapped_column(
+        comment="The proposal as worded when decided — snapshot, not a pointer"
+    )
+    expected_profit: Mapped[float | None] = mapped_column(
+        Numeric(14, 2), comment="Estimate at decision time, for later calibration"
+    )
+    estimate_basis: Mapped[str | None] = mapped_column(
+        comment="measured | modelled | assumed — what the estimate rested on"
+    )
+    reason_code: Mapped[str | None] = mapped_column(comment="Enumerated reason, dismissals only")
+    note: Mapped[str | None]
+    decided_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("app_user.id", ondelete="RESTRICT"))
+    decided_at: Mapped[datetime] = mapped_column(server_default=text("now()"))

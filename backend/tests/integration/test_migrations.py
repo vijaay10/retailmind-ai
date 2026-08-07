@@ -77,8 +77,8 @@ def test_all_tables_created(pg_env: dict[str, str]) -> None:
         "SELECT count(*) FROM information_schema.tables "
         "WHERE table_schema='public' AND table_type='BASE TABLE'",
     )
-    # 40 model tables + alembic_version + 2 default partitions
-    assert '"43"' in count
+    # 41 model tables + alembic_version + 2 default partitions
+    assert '"44"' in count
 
 
 def test_uuid_v7_function_is_versioned_and_time_ordered(pg_env: dict[str, str]) -> None:

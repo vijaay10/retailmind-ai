@@ -23,12 +23,17 @@ Requires `recommendations.read`.
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from app.api.deps import PrincipalDep, RecommendationServiceDep
-from app.schemas.recommendations import RecommendationsResponse
+from app.schemas.recommendations import (
+    DecisionLogResponse,
+    DecisionRequest,
+    DecisionResponse,
+    RecommendationsResponse,
+)
 from app.services.recommendations.contracts import Category
-from app.services.recommendations.service import summarise
+from app.services.recommendations.service import UnknownRecommendationError, summarise
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
 
@@ -116,4 +121,100 @@ async def recommendations(
     portfolio = await service.recommend(
         principal, categories=selected, end_date=end_date, limit=limit
     )
-    return RecommendationsResponse(**summarise(portfolio))
+    payload = summarise(portfolio)
+
+    # A card whose decision is already made must not read as pending. The
+    # engine recomputes proposals every request and has no memory of its own,
+    # so without this an accepted action reappears tomorrow as if nobody had
+    # ever looked at it — which is how an action queue loses its readers.
+    decisions = await service.decisions_for(
+        [item["decision_key"] for item in payload["recommendations"]]
+    )
+    for item in payload["recommendations"]:
+        item["decision"] = decisions.get(item["decision_key"])
+    payload["decided_count"] = sum(1 for item in payload["recommendations"] if item["decision"])
+
+    return RecommendationsResponse(**payload)
+
+
+@router.post(
+    "/decisions",
+    response_model=DecisionResponse,
+    summary="Accept or dismiss a proposed action",
+    responses={
+        403: _FORBIDDEN,
+        404: {"description": "No current recommendation matches that key."},
+    },
+)
+async def decide(
+    principal: PrincipalDep,
+    service: RecommendationServiceDep,
+    request: DecisionRequest,
+    end_date: Annotated[
+        date | None, Query(description="Analysis window the decision was taken against.")
+    ] = None,
+) -> DecisionResponse:
+    """Record what a human decided, and stop showing the card as pending.
+
+    **Requires `recommendations.act`, not `recommendations.read`.** Seeing a
+    proposal and committing the business to it are different privileges, and
+    the role matrix already separates them: the managers who own the
+    consequences may act; the broad read-only roles may not.
+
+    **The proposal is re-derived server-side rather than taken from the
+    request.** A client that could supply its own action text and expected
+    profit could write "accepted: +£10m" into the ledger, and the ledger is
+    what everyone later reasons from. The request carries a key and a verb;
+    every other field is read from the engine.
+
+    **A key that no longer matches anything is refused.** Positions move. If
+    the reorder that was proposed this morning is no longer advised this
+    afternoon, recording an approval for it would be recording agreement with
+    advice the platform has withdrawn.
+
+    **Deciding twice replaces rather than appends.** One current decision per
+    subject, so a card cannot render as both accepted and dismissed. The audit
+    ledger keeps the history of who changed their mind.
+
+    What this endpoint does *not* do is execute anything. No purchase order is
+    raised, no price changes. It records a judgement and the number that
+    judgement was made against, which is what makes the later question —
+    "were we right?" — answerable at all.
+    """
+    try:
+        decision = await service.decide(
+            principal,
+            decision_key=request.decision_key,
+            action=request.action,
+            reason_code=request.reason_code,
+            note=request.note,
+            end_date=end_date,
+        )
+    except UnknownRecommendationError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    return DecisionResponse(decision=decision, decided_by=principal.email)
+
+
+@router.get(
+    "/decisions",
+    response_model=DecisionLogResponse,
+    summary="What this team has decided lately",
+    responses={403: _FORBIDDEN},
+)
+async def decision_log(
+    principal: PrincipalDep,
+    service: RecommendationServiceDep,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> DecisionLogResponse:
+    """The decision log, newest first.
+
+    `accepted_profit` totals what the accepted actions were *expected* to be
+    worth, as estimated at the moment each was accepted. It is not realised
+    profit and must never be read as such — nothing in this platform measures
+    what happened after somebody acted. Recording the expectation is the
+    precondition for one day being able to.
+    """
+    return DecisionLogResponse(**await service.decision_log(principal, limit=limit))

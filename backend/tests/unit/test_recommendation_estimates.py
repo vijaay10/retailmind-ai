@@ -394,3 +394,61 @@ def test_estate_margin_is_revenue_weighted() -> None:
         {"net_revenue": 1_000.0, "margin_rate": 0.90},
     ]
     assert _estate_margin_rate(categories) == pytest.approx(0.3006, abs=1e-3)
+
+
+# ── Decision identity ────────────────────────────────────────────────
+
+
+def test_the_decision_key_survives_the_numbers_moving() -> None:
+    """The engine recomputes every request, and its wording carries figures.
+
+    Keying a decision on the sentence would detach a manager's approval the
+    moment a reorder quantity moved from 122 units to 130 — the card would
+    reappear as undecided, and the queue would look like nobody had ever
+    worked it.
+    """
+    monday = Recommendation(
+        category=Category.INVENTORY,
+        subject="BS-1037@S2016",
+        action="Order 122 units of BS-1037 for S2016",
+        rationale="r",
+        impact=_impact(1000.0, EstimateBasis.MEASURED, 0.0),
+        risk=_risk(-100.0, Reversibility.REVERSIBLE),
+        confidence=0.6,
+    )
+    tuesday = Recommendation(
+        category=Category.INVENTORY,
+        subject="BS-1037@S2016",
+        action="Order 130 units of BS-1037 for S2016",
+        rationale="r",
+        impact=_impact(1200.0, EstimateBasis.MEASURED, 0.0),
+        risk=_risk(-100.0, Reversibility.REVERSIBLE),
+        confidence=0.7,
+    )
+
+    assert monday.decision_key == tuesday.decision_key
+
+
+def test_different_actions_on_one_subject_are_different_decisions() -> None:
+    """Reordering a line and marking it down are opposite calls. Sharing a key
+    would let accepting one silently mark the other as handled."""
+    reorder = _rec()
+    markdown = Recommendation(
+        category=Category.PRICING,
+        subject="test",
+        action="Mark down",
+        rationale="r",
+        impact=_impact(1000.0, EstimateBasis.ASSUMED, 0.0),
+        risk=_risk(-100.0, Reversibility.IRREVERSIBLE),
+        confidence=0.4,
+    )
+
+    assert reorder.decision_key != markdown.decision_key
+
+
+def test_the_key_travels_with_the_recommendation() -> None:
+    """A card the console cannot key is a card nobody can act on."""
+    payload = _rec().as_dict()
+
+    assert len(payload["decision_key"]) == 32
+    assert payload["decision_key"] == _rec().decision_key

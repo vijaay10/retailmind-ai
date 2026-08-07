@@ -49,8 +49,10 @@ def _tables() -> list[Table]:
 
 
 def test_metadata_is_nonempty_and_complete() -> None:
-    # 40 tables per the Database design set; a dropped model import shows up here first.
-    assert len(_tables()) == 40, sorted(Base.metadata.tables)
+    # 41 tables: the Database design set plus `recommendation_decision`, added
+    # when the console gained a way to accept a proposal. A dropped model
+    # import shows up here first.
+    assert len(_tables()) == 41, sorted(Base.metadata.tables)
 
 
 @pytest.mark.parametrize("table", _tables(), ids=lambda t: t.name)

@@ -32,6 +32,9 @@ from app.infrastructure.db.repositories.insights import (
     AlertReadRepository,
     RecommendationReadRepository,
 )
+from app.infrastructure.db.repositories.recommendation_decisions import (
+    RecommendationDecisionRepository,
+)
 from app.infrastructure.semantic.repository import AnalyticsRepository
 from app.services.analyst.service import BusinessAnalystService
 from app.services.analytics.service import AnalyticsService
@@ -241,14 +244,24 @@ def get_rca_service(analytics: AnalyticsServiceDep) -> RootCauseService:
 RcaServiceDep = Annotated[RootCauseService, Depends(get_rca_service)]
 
 
-def get_recommendation_service(analytics: AnalyticsServiceDep) -> RecommendationService:
+def get_recommendation_service(
+    analytics: AnalyticsServiceDep,
+    principal: PrincipalDep,
+    session: SessionDep,
+) -> RecommendationService:
     """Recommendations over the governed analytics registry.
 
     Composes surfaces the platform already publishes rather than reading the
     warehouse directly, so a recommendation can never quote a number the
     corresponding dashboard would disagree with.
+
+    The decision ledger is tenant-scoped at construction, so no call site can
+    read or write another tenant's decisions by passing the wrong id.
     """
-    return RecommendationService(analytics)
+    return RecommendationService(
+        analytics,
+        RecommendationDecisionRepository(session, principal.tenant_id),
+    )
 
 
 RecommendationServiceDep = Annotated[RecommendationService, Depends(get_recommendation_service)]
