@@ -63,6 +63,12 @@ exclude = ["notebooks"]
 module = ["celery.*"]
 ignore_missing_imports = true
 
+# Plotly ships no type information. Scoped to the console's chart module
+# rather than relaxed globally, so the rest of the UI stays strict.
+[[tool.mypy.overrides]]
+module = ["plotly.*", "st_aggrid.*"]
+ignore_missing_imports = true
+
 [[tool.mypy.overrides]]
 module = ["app.workers.tasks.*", "app.workers.celery_app"]
 disallow_untyped_decorators = false
@@ -74,6 +80,43 @@ addopts = "-ra --strict-markers --import-mode=importlib"
 markers = [
     "integration: requires Docker services (testcontainers)",
     "scenario: full-pipeline synthetic-retailer suite (slow, merge-to-main)",
+]
+
+# ── Coverage ──────────────────────────────────────────────────────────
+#
+# Measured across every package the suites exercise, so a service that is only
+# covered by integration tests reports honestly rather than looking untested.
+
+[tool.coverage.run]
+source = ["backend/app", "data_platform/ingestion", "ml", "ui/retailmind_ui"]
+branch = true
+parallel = true
+omit = [
+    "*/migrations/versions/*",  # exercised by the migration round-trip, not unit-callable
+    "*/__main__.py",
+    "*/conftest.py",
+]
+
+[tool.coverage.paths]
+# The suites import through different roots (workspace members are installed
+# editable); without this, one module reports twice at two paths and the total
+# is quietly wrong.
+backend = ["backend/app", "*/backend/app"]
+etl = ["data_platform/ingestion", "*/data_platform/ingestion"]
+ml = ["ml", "*/ml"]
+ui = ["ui/retailmind_ui", "*/ui/retailmind_ui"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+precision = 1
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@(abc\\.)?abstractmethod",
+    "if __name__ == .__main__.:",
+    # Wiring guards that only fire on a misconfigured container.
+    "pragma: no cover",
 ]
 
 # Architecture boundary contracts (Backend design §2, ETL design §32).

@@ -47,11 +47,21 @@ fmt: ## Auto-format
 	uv run ruff check --fix backend data_platform ml ui
 
 .PHONY: test
-test: ## Run the fast test ladder (unit)
-	uv run pytest backend/tests/unit data_platform/tests/unit ui/tests -q
+test: ## Run the fast test ladder (no Docker, seconds)
+	uv run pytest backend/tests/unit data_platform/tests/unit ml/tests ui/tests -q
+
+.PHONY: coverage
+coverage: ## Full suite with a combined coverage report
+	uv run pytest -q --cov --cov-report=term-missing --cov-report=html:htmlcov
+	@echo "→ open htmlcov/index.html"
+
+.PHONY: coverage-gate
+coverage-gate: ## The bars CI enforces
+	uv run coverage report --include='backend/app/domain/*,backend/app/services/*' --fail-under=85
+	uv run coverage report --fail-under=80
 
 .PHONY: test-integration
-test-integration: ## Integration tests (needs Docker)
+test-integration: ## Integration tests — Postgres + a built warehouse (needs Docker)
 	uv run pytest backend/tests/integration data_platform/tests/integration -q
 
 # ── Data platform ─────────────────────────────────────────────────────
