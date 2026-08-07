@@ -23,15 +23,17 @@ tests, and those go through `migrated_db`, which is per-session but truncated
 between modules by the fixtures that need it.
 """
 
-import os
-import subprocess
 import sys
-from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
-DBT_DIR = REPO / "data_platform" / "dbt"
+
+sys.path.insert(0, str(REPO / "data_platform"))
+
+from ingestion.demo import Shape  # noqa: E402
+from ingestion.demo import build as demo_build  # noqa: E402
+from ingestion.demo import run_dbt as rebuild  # noqa: E402
 
 #: The last business date every suite asserts against. Fixed rather than
 #: relative to today: a test whose expectations move with the wall clock fails
@@ -60,25 +62,6 @@ USERS = {
 # passing for the wrong reason.
 
 
-@dataclass(frozen=True, slots=True)
-class Shape:
-    """How much world to generate.
-
-    Deliberately small: every field here costs build time in every suite that
-    shares the shape, and the assertions these suites make are about behaviour
-    — decomposition, suppression, permission — not about scale.
-    """
-
-    days: int
-    stores: int
-    lines_per_store: int
-    skus_per_store: int
-
-    @property
-    def slug(self) -> str:
-        return f"{self.days}d_{self.stores}s_{self.lines_per_store}l_{self.skus_per_store}k"
-
-
 #: The estate nine of the ten API suites run against. Ten stores is enough for
 #: a league table and a region decomposition; sixty-three days covers a
 #: three-week window against a six-week baseline.
@@ -91,105 +74,14 @@ DEEP_HISTORY = Shape(days=140, stores=3, lines_per_store=20, skus_per_store=8)
 
 
 def build(shape: Shape, root: Path) -> Path:
-    """Generate sources, ingest them, and build the warehouse."""
-    sys.path.insert(0, str(REPO / "data_platform"))
+    """Generate sources, ingest them, and build the warehouse.
 
-    from ingestion.connectors.csv_files import CsvFileConnector
-    from ingestion.core.config import EtlSettings
-    from ingestion.core.duck import connect
-    from ingestion.domain.schema import SourceSchema
-    from ingestion.domain.window import Window
-    from ingestion.generators import (
-        fulfilment,
-        inventory_files,
-        pos_files,
-        purchase_orders,
-        weather,
-    )
-    from ingestion.pipeline import IngestionPipeline
-
-    settings = EtlSettings(
-        landing_root=root / "lake",
-        inbox_root=root / "inbox",
-        warehouse_path=root / "wh.duckdb",
-        reject_rate_threshold=0.10,
-    )
-
-    first_day = LAST_DAY - timedelta(days=shape.days - 1)
-    for offset in range(shape.days):
-        day = first_day + timedelta(days=offset)
-        pos_files.generate_day(
-            settings.inbox_dir("pos"),
-            day,
-            stores=shape.stores,
-            lines_per_store=shape.lines_per_store,
-            seed=7 + offset,
-            history_start=first_day,
-            history_end=LAST_DAY,
-        )
-        inventory_files.generate_day(
-            settings.inbox_dir("inventory"),
-            day,
-            stores=shape.stores,
-            skus_per_store=shape.skus_per_store,
-            seed=600 + offset,
-        )
-        purchase_orders.generate_day(
-            settings.inbox_dir("purchasing"),
-            day,
-            stores=shape.stores,
-            lines=16,
-            seed=900 + offset,
-            as_of=LAST_DAY,
-        )
-        weather.generate_day(
-            settings.inbox_dir("weather"), day, seed=41 + offset, history_end=LAST_DAY
-        )
-        fulfilment.generate_day(
-            settings.inbox_dir("fulfilment"),
-            day,
-            stores=shape.stores,
-            seed=55 + offset,
-            history_end=LAST_DAY,
-        )
-
-    schema_root = REPO / "data_platform" / "ingestion" / "schemas"
-    window = Window(first_day, LAST_DAY + timedelta(days=1))
-    connection = connect(settings.warehouse_path)
-    for source, table, units in (
-        ("pos", "sales", shape.stores),
-        ("inventory", "positions", shape.stores),
-        ("purchasing", "orders", 1),
-        ("weather", "observations", 1),
-        ("fulfilment", "deliveries", 1),
-    ):
-        schema = SourceSchema.from_yaml(schema_root / source / f"{table}.yml")
-        connector = CsvFileConnector(
-            schema=schema, settings=settings, connection=connection, expected_units=units
-        )
-        summary = IngestionPipeline(
-            connector=connector, settings=settings, connection=connection
-        ).run(window)
-        assert not summary.quarantined, f"{source}: {summary.quarantined}"
-    connection.close()
-
-    env = {
-        **os.environ,
-        "RM_WAREHOUSE_DUCKDB_PATH": str(settings.warehouse_path),
-        "DBT_TARGET_PATH": str(root / "dbt_target"),
-    }
-    for step in ("seed", "snapshot", "build"):
-        result = subprocess.run(  # noqa: S603
-            ["uv", "run", "dbt", step, "--profiles-dir", "."],  # noqa: S607
-            cwd=DBT_DIR,
-            env=env,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 0, f"dbt {step} failed:\n{result.stdout[-3000:]}"
-
-    return settings.warehouse_path
+    Thin by design. The building itself lives in `ingestion.demo` so that
+    `make demo` can call it without importing a test package — the fixtures
+    these suites assert against and the warehouse a recruiter sees are then
+    provably the same pipeline, not two copies drifting apart.
+    """
+    return demo_build(shape, root, last_day=LAST_DAY)
 
 
 def train_forecasts(warehouse_path: Path, root: Path) -> int:
@@ -208,17 +100,8 @@ def train_forecasts(warehouse_path: Path, root: Path) -> int:
     )
     assert report.predictions_written > 0, "training published nothing"
 
-    result = subprocess.run(  # noqa: S603
-        ["uv", "run", "dbt", "build", "--profiles-dir", "."],  # noqa: S607
-        cwd=DBT_DIR,
-        env={
-            **os.environ,
-            "RM_WAREHOUSE_DUCKDB_PATH": str(warehouse_path),
-            "DBT_TARGET_PATH": str(root / "dbt_target"),
-        },
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0, f"rebuild after training failed:\n{result.stdout[-3000:]}"
+    # Same dbt invocation the initial build uses, from the same place — a
+    # second copy here is how the fixture and the demo start disagreeing about
+    # which steps run.
+    rebuild(warehouse_path, target_path=root / "dbt_target")
     return int(report.predictions_written)

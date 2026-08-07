@@ -12,11 +12,58 @@ help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
 # ── Stack ─────────────────────────────────────────────────────────────
+DEMO_WAREHOUSE := .local/demo/retailmind.duckdb
+
 .PHONY: demo
-demo: ## Boot full stack + synthetic retailer (the recruiter path)
-	$(COMPOSE_DEMO) up -d --build
-	@echo "TODO(S1): seed synthetic retailer + run first DAG cycle"
-	@echo "→ app will be at http://localhost:$${RM_API_PORT:-8090} once services are healthy"
+demo: ## Boot the full stack with a synthetic retailer (the first-run path)
+	@echo "→ building images and generating the retailer at the same time"
+	@# Concurrently, and that is the whole reason this hits its time budget.
+	@# The image build and the data build share nothing: run in sequence they
+	@# cost the sum, run together they cost the slower one. `wait` on each PID
+	@# individually rather than bare `wait`, so a failure in either is still a
+	@# non-zero exit instead of a demo that boots with no data in it.
+	@set -e; \
+	$(MAKE) --no-print-directory demo-warehouse & WAREHOUSE=$$!; \
+	$(COMPOSE_DEMO) build --quiet & IMAGES=$$!; \
+	wait $$WAREHOUSE; \
+	wait $$IMAGES
+	@echo "→ starting services (migrations and seed run first)"
+	$(COMPOSE_DEMO) up -d --wait
+	@$(MAKE) --no-print-directory demo-banner
+
+.PHONY: demo-warehouse
+demo-warehouse: ## Build the demo warehouse only (generate → ingest → dbt)
+	@# Skipped when it already exists: the second `make demo` of the day should
+	@# take fifteen seconds, not two minutes. `make demo-rebuild` forces it.
+	@if [ -f $(DEMO_WAREHOUSE) ]; then \
+		echo "→ warehouse already built ($(DEMO_WAREHOUSE)) — make demo-rebuild to regenerate"; \
+	else \
+		cd data_platform && uv run python -m ingestion.cli demo-warehouse \
+			--out ../$(DEMO_WAREHOUSE); \
+	fi
+
+.PHONY: demo-rebuild
+demo-rebuild: ## Regenerate the demo warehouse from scratch
+	rm -f $(DEMO_WAREHOUSE)
+	@$(MAKE) --no-print-directory demo-warehouse
+
+.PHONY: demo-banner
+demo-banner: ## Print where the demo is and how to sign in
+	@printf '\n  \033[1mRetailMind AI is running.\033[0m\n\n'
+	@printf '  Console   \033[36mhttp://localhost:%s\033[0m\n' "$${RM_UI_PORT:-8501}"
+	@printf '  API docs  \033[36mhttp://localhost:%s/api/docs\033[0m\n\n' "$${RM_API_PORT:-8090}"
+	@printf '  Sign in as the CEO to land on the Command Center:\n'
+	@printf '    email     \033[1mpriya@northwind.example\033[0m\n'
+	@printf '    password  \033[1mChangeMe-Demo1!\033[0m\n\n'
+	@printf '  Six more users exist, one per role, same password — see\n'
+	@printf '  backend/app/infrastructure/db/seeds/sample.py. Demo credentials,\n'
+	@printf '  seeded only when RM_APP_ENV=dev.\n\n'
+	@printf '  make demo-down   stop everything and delete the data\n\n' 
+
+.PHONY: demo-down
+demo-down: ## Stop the demo and remove its data
+	$(COMPOSE_DEMO) down -v
+	rm -rf .local/demo
 
 .PHONY: up
 up: ## Dev stack with hot reload

@@ -21,10 +21,24 @@
 
 ```bash
 git clone <repo-url> && cd retailmind-ai
-make demo        # boots the full stack + synthetic retailer, opens the app
+make demo        # ~2.5 min: builds images, generates a retailer, migrates, seeds
 ```
 
-Requirements: Docker + Docker Compose, `make`, [uv](https://docs.astral.sh/uv/). See [docs/](docs/) for everything else.
+Then open **http://localhost:8501** and sign in as `priya@northwind.example`
+with `ChangeMe-Demo1!` to land on the Command Center. Six more users exist, one
+per role — the console shows different things to a CEO, a store manager and an
+inventory planner, which is most of the point. `make demo-down` removes
+everything including the data.
+
+The synthetic retailer is 28 days across 4 stores, generated from fixed seeds
+against a fixed business date, so the numbers are the same on your machine as
+in the screenshots. It is built by the same code the integration suite builds
+its fixtures with — `data_platform/ingestion/demo.py` — so the demo cannot
+drift away from what the tests assert.
+
+Requirements: Docker + Docker Compose, `make`, [uv](https://docs.astral.sh/uv/).
+The warehouse is built on the host (that is what `uv` is for); everything else
+runs in containers. See [docs/](docs/) for everything else.
 
 ## Architecture at a glance
 

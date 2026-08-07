@@ -11,38 +11,15 @@ explains, that pending forecasts cannot inflate the accuracy sample, and that
 a band is never inverted.
 """
 
-import os
-import subprocess
-from pathlib import Path
-
 import pytest
 
 pytest.importorskip("testcontainers", reason="integration extra not installed")
 from httpx import AsyncClient  # noqa: E402
 
-from tests.integration import warehouse  # noqa: E402
 from tests.integration.conftest import auth_headers  # noqa: E402
 from tests.integration.warehouse import LAST_DAY  # noqa: E402
 
 pytestmark = pytest.mark.integration
-
-DBT_DIR = warehouse.DBT_DIR
-
-
-def _dbt(step: str, warehouse: Path, target: Path) -> None:
-    result = subprocess.run(  # noqa: S603
-        ["uv", "run", "dbt", step, "--profiles-dir", "."],  # noqa: S607
-        cwd=DBT_DIR,
-        env={
-            **os.environ,
-            "RM_WAREHOUSE_DUCKDB_PATH": str(warehouse),
-            "DBT_TARGET_PATH": str(target),
-        },
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0, f"dbt {step} failed:\n{result.stdout[-3000:]}"
 
 
 async def _get(deep_api: AsyncClient, path: str, role: str = "ceo", **params: object) -> dict:

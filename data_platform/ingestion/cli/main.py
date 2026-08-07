@@ -9,6 +9,7 @@ whole payoff of making windows the unit of work.
 # load time (SourceSchema.validate) and from module constants; every value
 # originating in data is bound as a parameter.
 
+import shutil
 import uuid
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -274,6 +275,81 @@ def rejects_report(
     typer.echo(f"rejects for {source}.{table} {partition}:")
     for reason, count in rows:
         typer.echo(f"  {count:>8,}  {reason}")
+
+
+@app.command("demo-warehouse")
+def demo_warehouse(
+    out: Annotated[Path, typer.Option(help="Where to write the warehouse")] = Path(
+        ".local/demo/retailmind.duckdb"
+    ),
+    days: Annotated[int, typer.Option(help="Days of history to generate")] = 0,
+    stores: Annotated[int, typer.Option(help="Stores in the estate")] = 0,
+) -> None:
+    """Build a demo warehouse from nothing: generate, ingest, dbt.
+
+    This is what `make demo` runs. Zero for --days or --stores means "use the
+    tuned demo shape", which is sized against a stopwatch — see
+    `ingestion.demo.DEMO`.
+
+    Idempotent in the way that matters for a demo: it builds into a scratch
+    tree and moves the finished file into place, so an interrupted run leaves
+    the previous warehouse intact rather than a half-built one that fails at
+    query time instead of build time.
+    """
+    from ingestion.demo import DEMO, Shape, build
+
+    shape = Shape(
+        days=days or DEMO.days,
+        stores=stores or DEMO.stores,
+        lines_per_store=DEMO.lines_per_store,
+        skus_per_store=DEMO.skus_per_store,
+    )
+    out = out.resolve()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    scratch = out.parent / f".build-{shape.slug}"
+    if scratch.exists():
+        shutil.rmtree(scratch)
+    scratch.mkdir(parents=True)
+
+    typer.echo(f"building demo warehouse: {shape.days} days, {shape.stores} stores")
+    # Built under its final name, not renamed into place. DuckDB derives the
+    # catalog name from the file name and dbt compiles it into every view, so a
+    # rename turns a working warehouse into `Catalog "wh" does not exist` on
+    # the first query the API makes.
+    built = build(shape, scratch, filename=out.name)
+    built.replace(out)
+    shutil.rmtree(scratch, ignore_errors=True)
+
+    verify(out)
+    typer.echo(f"→ {out} ({out.stat().st_size / 1e6:.0f} MB)")
+
+
+def verify(path: Path) -> None:
+    """Query the finished warehouse the way the API will.
+
+    Opened read-only from its final location, through a semantic view, because
+    that is the combination that broke: the build succeeded, the file was
+    valid, and every query still failed. A build that reports success without
+    being readable is worse than one that fails.
+    """
+    import duckdb
+
+    try:
+        conn = duckdb.connect(str(path), read_only=True)
+    except duckdb.Error as exc:  # pragma: no cover - surfaced to the operator
+        raise typer.Exit(1) from exc
+    try:
+        rows = conn.execute("SELECT count(*) FROM analytics_semantic.v_mart_sales_daily").fetchone()
+    except duckdb.Error as exc:
+        typer.echo(f"warehouse built but is not queryable: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    finally:
+        conn.close()
+
+    if not rows or not rows[0]:
+        typer.echo("warehouse built but the sales mart is empty", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"verified: {rows[0]:,} rows in the daily sales mart")
 
 
 if __name__ == "__main__":  # pragma: no cover
