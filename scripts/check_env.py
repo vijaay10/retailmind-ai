@@ -31,6 +31,7 @@ EXAMPLE = REPO / ".env.example"
 #: a third-party tool.
 INFRA_PREFIXES = (
     "RM_API_PORT",
+    "RM_API_LOCAL_PORT",
     "RM_UI_PORT",
     "RM_HTTP_PORT",
     "RM_HTTPS_PORT",

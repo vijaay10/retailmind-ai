@@ -191,7 +191,11 @@ seed-demo: seed-db ## Seed the Northwind Threads demo tenant (refuses in prod)
 
 .PHONY: api
 api: ## Run the API locally (no Docker)
-	cd backend && uv run uvicorn app.main:create_app --factory --reload --port 8000
+	@# Overridable like every other port here. 8000 is a popular default and
+	@# a machine with something already on it should not need to edit a file
+	@# to run the API — `RM_API_LOCAL_PORT=8001 make api`.
+	cd backend && uv run uvicorn app.main:create_app --factory --reload \
+		--port $${RM_API_LOCAL_PORT:-8000}
 
 .PHONY: console
 console: ## Run the Streamlit console (point RM_API_BASE_URL at a running API)
