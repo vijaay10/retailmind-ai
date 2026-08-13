@@ -1,0 +1,40 @@
+{
+  // Suggested on first open. Every entry maps to something this repository
+  // actually uses — no general-purpose "productivity" packs, because an
+  // extension nobody asked for is an extension nobody trusts.
+  "recommendations": [
+    // Python: language server, debugger, and the two tools `make lint` runs.
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-python.debugpy",
+    "charliermarsh.ruff",
+    "ms-python.mypy-type-checker",
+
+    // dbt: 67 models of Jinja-templated SQL. Without this they read as
+    // broken SQL.
+    "innoverio.vscode-dbt-power-user",
+    "samuelcolvin.jinjahtml",
+
+    // Containers: four Dockerfiles and four compose overlays.
+    "ms-azuretools.vscode-docker",
+
+    // The compose overlays and CI workflows are where the subtle bugs live;
+    // schema validation catches a mistyped key before a 15-minute CI run.
+    "redhat.vscode-yaml",
+    "github.vscode-github-actions",
+
+    // Makefile is the entry point for every workflow in this project.
+    "ms-vscode.makefile-tools",
+
+    // Claude Code, since this is the primary development environment now.
+    "anthropic.claude-code"
+  ],
+  "unwantedRecommendations": [
+    // Would fight ruff over formatting and import order. `make lint` and CI
+    // enforce ruff; a second opinion in the editor produces churn diffs.
+    "ms-python.black-formatter",
+    "ms-python.isort",
+    "ms-python.flake8",
+    "ms-python.pylint"
+  ]
+}

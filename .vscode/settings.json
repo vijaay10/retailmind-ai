@@ -1,0 +1,109 @@
+{
+  // Project-relative only. Nothing here names a machine, a user, or an
+  // absolute path — `${workspaceFolder}` is the anchor everywhere.
+
+  // ── Interpreter ───────────────────────────────────────────────────
+  // The uv-managed venv at the repo root. `.python-version` pins 3.12 to
+  // match the runtime images, so `uv sync` produces this exact interpreter.
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.terminal.activateEnvInCurrentTerminal": true,
+
+  // ── Ruff ──────────────────────────────────────────────────────────
+  // One tool for lint and format. Organise-imports on save matches what
+  // `make lint` enforces, so CI never fails on something the editor could
+  // have fixed while you typed.
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll.ruff": "explicit",
+      "source.organizeImports.ruff": "explicit"
+    }
+  },
+  "ruff.importStrategy": "fromEnvironment",
+
+  // ── mypy ──────────────────────────────────────────────────────────
+  // `backend/app` and `ui/app.py` both resolve to the module name `app`, and
+  // mypy refuses the collision — which is why `make lint` runs it twice. The
+  // extension can only be pointed at one target, so it watches the backend
+  // and `make lint` remains the authority before you push.
+  "mypy-type-checker.importStrategy": "fromEnvironment",
+  "mypy-type-checker.args": ["--config-file=${workspaceFolder}/pyproject.toml"],
+  "mypy-type-checker.cwd": "${workspaceFolder}",
+
+  // ── pytest ────────────────────────────────────────────────────────
+  // Only the fast ladder is wired into the Test Explorer. The integration
+  // suite needs Docker and takes about fifteen minutes; discovering it here
+  // means the editor tries to collect it on every keystroke-triggered
+  // refresh. Run it from the Tasks menu instead.
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": [
+    "backend/tests/unit",
+    "data_platform/tests/unit",
+    "ml/tests",
+    "ui/tests"
+  ],
+
+  // ── Files ─────────────────────────────────────────────────────────
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.pytest_cache": true,
+    "**/.ruff_cache": true,
+    "**/.mypy_cache": true,
+    "**/*.egg-info": true
+  },
+  // Excluded from search and the watcher, not from the tree: dbt rewrites
+  // target/ on every build and the watcher wakes the editor each time.
+  "search.exclude": {
+    "**/.venv": true,
+    "**/.local": true,
+    "**/uv.lock": true,
+    "data_platform/dbt/target": true,
+    "data_platform/dbt/logs": true,
+    "**/htmlcov": true
+  },
+  "files.watcherExclude": {
+    "**/.venv/**": true,
+    "**/.local/**": true,
+    "data_platform/dbt/target/**": true,
+    "data_platform/dbt/logs/**": true
+  },
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+
+  // ── Language associations ─────────────────────────────────────────
+  // dbt models are Jinja-templated SQL. Without this, every `{{ ref() }}` is
+  // a syntax error in the editor.
+  "files.associations": {
+    "*.sql": "jinja-sql",
+    "compose*.yml": "dockercompose",
+    "*.Dockerfile": "dockerfile"
+  },
+  "[sql]": { "editor.formatOnSave": false },
+  "[jinja-sql]": { "editor.formatOnSave": false },
+
+  // ── YAML ──────────────────────────────────────────────────────────
+  // Two-space indent matters: the compose overlays rely on exact merge
+  // semantics and a reindent produces a diff nobody can review.
+  "[yaml]": {
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true,
+    "editor.autoIndent": "keep"
+  },
+
+  // ── Editor ────────────────────────────────────────────────────────
+  // 100 columns is the ruff line-length in pyproject.toml. The ruler is
+  // there so a comment that will be reflowed by the formatter looks wrong
+  // before you save rather than after.
+  "editor.rulers": [100],
+  "editor.renderWhitespace": "trailing",
+
+  // ── Git ───────────────────────────────────────────────────────────
+  // Never auto-fetch or auto-push. This repository's history is the record
+  // of how it was built; nothing should touch a remote without being asked.
+  "git.autofetch": false,
+  "git.confirmSync": true,
+  "git.enableSmartCommit": false,
+  "git.postCommitCommand": "none"
+}

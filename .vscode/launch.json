@@ -1,0 +1,124 @@
+{
+  "version": "0.2.0",
+  // Debugging the API and the console natively, against Postgres and Redis
+  // running in Docker. Start the "Infra: start Postgres + Redis only" task
+  // first — these configurations do not boot the database.
+  //
+  // Every configuration sets RM_DB_HOST=localhost explicitly. The default in
+  // .env.example is `postgres`, which is the in-container service name and
+  // does not resolve from the host. Environment variables set here outrank a
+  // .env file, so this works whether or not one exists.
+  "configurations": [
+    {
+      "name": "API (FastAPI, reload)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "app.main:create_app",
+        "--factory",
+        "--reload",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
+      ],
+      "cwd": "${workspaceFolder}/backend",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {
+        "RM_APP_ENV": "dev",
+        "RM_APP_LOG_LEVEL": "DEBUG",
+        "RM_DB_HOST": "localhost",
+        "RM_REDIS_CACHE_URL": "redis://localhost:6379/0",
+        "RM_REDIS_STATE_URL": "redis://localhost:6379/0",
+        // Built by `make demo` or the ETL task. Relative to cwd (backend/).
+        "RM_WAREHOUSE_DUCKDB_PATH": "${workspaceFolder}/.local/demo/retailmind.duckdb"
+      }
+    },
+    {
+      "name": "Console (Streamlit)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "streamlit",
+      "args": ["run", "app.py", "--server.port", "8501", "--server.headless", "true"],
+      "cwd": "${workspaceFolder}/ui",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {
+        // Points at the debugged API above, not the containerised one on
+        // 8090. Change to http://localhost:8090 to drive the Docker stack.
+        "RM_API_BASE_URL": "http://localhost:8000"
+      }
+    },
+    {
+      "name": "Worker (Celery)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "celery",
+      "args": [
+        "-A",
+        "app.workers.celery_app",
+        "worker",
+        "--loglevel",
+        "DEBUG",
+        "--concurrency",
+        "1",
+        "--without-gossip",
+        "--without-mingle"
+      ],
+      "cwd": "${workspaceFolder}/backend",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {
+        "RM_DB_HOST": "localhost",
+        // The durable Redis, never the cache — a broker on an LRU-evicting
+        // instance drops queued tasks under memory pressure.
+        "RM_CELERY_BROKER_URL": "redis://localhost:6380/1",
+        "RM_CELERY_RESULT_BACKEND": "redis://localhost:6380/2"
+      }
+    },
+    {
+      "name": "ETL: build demo warehouse",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "ingestion.cli",
+      "args": ["demo-warehouse", "--out", "${workspaceFolder}/.local/demo/retailmind.duckdb"],
+      "cwd": "${workspaceFolder}/data_platform",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Forecasting: train",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "forecasting.cli",
+      "args": ["train"],
+      "cwd": "${workspaceFolder}/ml",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {
+        "RM_WAREHOUSE_DUCKDB_PATH": "${workspaceFolder}/.local/demo/retailmind.duckdb"
+      }
+    },
+    {
+      "name": "pytest: current file",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["${file}", "-q", "-s"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    }
+  ],
+  "compounds": [
+    {
+      // The everyday loop: API and console together, both debuggable, both
+      // reloading. Infra must already be up.
+      "name": "Full stack (API + Console)",
+      "configurations": ["API (FastAPI, reload)", "Console (Streamlit)"],
+      "stopAll": true
+    }
+  ]
+}

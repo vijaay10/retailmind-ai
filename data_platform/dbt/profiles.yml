@@ -1,0 +1,16 @@
+retailmind:
+  target: duckdb
+  outputs:
+    duckdb:
+      type: duckdb
+      path: "{{ env_var('RM_WAREHOUSE_DUCKDB_PATH', '../../.local/retailmind.duckdb') }}"
+      schema: analytics
+      # DuckDB is an embedded single-writer engine: parallel model builds race
+      # on the create/rename swap and fail with missing __dbt_backup tables.
+      # The Snowflake profile raises this — concurrency belongs where the
+      # engine actually separates compute from storage.
+      threads: 1
+      settings:
+        # Same discipline as the ingestion pipeline: business-date arithmetic
+        # must not depend on where the job ran (ingestion.core.duck).
+        TimeZone: 'UTC'

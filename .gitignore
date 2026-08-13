@@ -47,7 +47,13 @@ bronze/
 data_platform/dbt/target/
 data_platform/dbt/dbt_packages/
 data_platform/dbt/logs/
-data_platform/dbt/profiles.yml
+# NOT ignored: data_platform/dbt/profiles.yml
+# Ignoring a dbt profile is the right default when it holds warehouse
+# credentials. This one holds none — the path comes from
+# env_var('RM_WAREHOUSE_DUCKDB_PATH') with a relative fallback, and the rest
+# is thread count and a timezone. Ignored, it never reached a clone, so
+# `make demo`, `make warehouse` and the dbt integration tests all failed on
+# any machine but the one that wrote it.
 
 # ── Airflow ───────────────────────────────────────────
 airflow.db
@@ -69,11 +75,24 @@ ml/notebooks/**/*.ipynb_checkpoints/
 
 # ── IDE / OS ──────────────────────────────────────────
 .idea/
-.vscode/
+# The shared VS Code setup is part of the project — a workspace configuration
+# nobody receives is a workspace configuration nobody has. Personal files
+# (launch overrides, per-user state) stay ignored by the wildcard.
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/tasks.json
+!.vscode/launch.json
 .DS_Store
 
 # ── Logs & local scratch ──────────────────────────────
 *.log
 tmp/
 .local/
-data_platform/dbt/profiles.yml
+# NOT ignored: data_platform/dbt/profiles.yml
+# Ignoring a dbt profile is the right default when it holds warehouse
+# credentials. This one holds none — the path comes from
+# env_var('RM_WAREHOUSE_DUCKDB_PATH') with a relative fallback, and the rest
+# is thread count and a timezone. Ignored, it never reached a clone, so
+# `make demo`, `make warehouse` and the dbt integration tests all failed on
+# any machine but the one that wrote it.

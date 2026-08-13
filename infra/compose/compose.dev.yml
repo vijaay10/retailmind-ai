@@ -35,6 +35,14 @@ services:
   redis-cache:
     ports: ["6379:6379"]
 
+  redis-state:
+    # Published so a worker running natively in a debugger can reach the
+    # broker. Without this the only Redis on the host is the cache, and
+    # pointing a broker at an LRU-evicting instance silently drops queued
+    # tasks under memory pressure. Offset to 6380 so both are reachable at
+    # once and neither collides with a system Redis on the default port.
+    ports: ["6380:6379"]
+
   minio:
     ports: ["9000:9000", "9001:9001"]
 

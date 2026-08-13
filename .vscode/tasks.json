@@ -1,0 +1,144 @@
+{
+  "version": "2.0.0",
+  // Every task shells a Makefile target rather than restating its command.
+  // The Makefile is what CI and the README use, so a task that duplicated a
+  // command would eventually run something nobody else runs.
+  "options": {
+    "cwd": "${workspaceFolder}"
+  },
+  "presentation": {
+    "echo": true,
+    "reveal": "always",
+    "panel": "dedicated",
+    "clear": true
+  },
+  "tasks": [
+    {
+      "label": "Demo: boot everything (first run)",
+      "detail": "make demo — images, synthetic retailer, migrations, seed. ~2.5 min.",
+      "type": "shell",
+      "command": "make demo",
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "Demo: tear down and delete data",
+      "detail": "make demo-down — stops the stack and removes volumes and the warehouse.",
+      "type": "shell",
+      "command": "make demo-down",
+      "problemMatcher": []
+    },
+    {
+      "label": "Infra: start Postgres + Redis only",
+      "detail": "For running the API and console natively in the debugger.",
+      "type": "shell",
+      "command": "docker compose -f infra/compose/compose.yml -f infra/compose/compose.dev.yml up -d postgres redis-cache redis-state",
+      "problemMatcher": []
+    },
+    {
+      "label": "Infra: stop everything",
+      "type": "shell",
+      "command": "make down",
+      "problemMatcher": []
+    },
+    {
+      "label": "DB: migrate",
+      "detail": "alembic upgrade head against the local Postgres.",
+      "type": "shell",
+      "command": "make migrate",
+      "options": { "env": { "RM_DB_HOST": "localhost" } },
+      "problemMatcher": []
+    },
+    {
+      "label": "DB: seed demo tenant",
+      "detail": "Reference roles + the Northwind Threads tenant. Refuses outside dev.",
+      "type": "shell",
+      "command": "make seed-demo",
+      "options": { "env": { "RM_DB_HOST": "localhost" } },
+      "problemMatcher": []
+    },
+    {
+      "label": "ETL: build the demo warehouse",
+      "detail": "Generate synthetic sources, ingest, then dbt seed/snapshot/build.",
+      "type": "shell",
+      "command": "make demo-rebuild",
+      "problemMatcher": []
+    },
+    {
+      "label": "dbt: build warehouse",
+      "type": "shell",
+      "command": "make warehouse",
+      "problemMatcher": []
+    },
+    {
+      "label": "dbt: docs",
+      "detail": "Generates and serves the model documentation site.",
+      "type": "shell",
+      "command": "make warehouse-docs",
+      "problemMatcher": [],
+      "isBackground": true
+    },
+    {
+      "label": "Test: fast ladder",
+      "detail": "794 tests, no Docker, ~60s. This is the one to run constantly.",
+      "type": "shell",
+      "command": "make test",
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Test: integration (needs Docker, ~15 min)",
+      "detail": "305 tests against real Postgres and a built warehouse.",
+      "type": "shell",
+      "command": "make test-integration",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Test: coverage",
+      "type": "shell",
+      "command": "make coverage",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Lint: ruff + mypy",
+      "detail": "Exactly what CI runs. Green here means green there.",
+      "type": "shell",
+      "command": "make lint",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$python"]
+    },
+    {
+      "label": "Lint: format",
+      "type": "shell",
+      "command": "make fmt",
+      "problemMatcher": []
+    },
+    {
+      "label": "Check: environment contract",
+      "detail": "Holds .env.example to the settings model in both directions.",
+      "type": "shell",
+      "command": "uv run python scripts/check_env.py",
+      "problemMatcher": []
+    },
+    {
+      "label": "Check: production publishes only the edge",
+      "type": "shell",
+      "command": "uv run python scripts/check_ports.py",
+      "problemMatcher": []
+    },
+    {
+      "label": "Check: everything CI checks",
+      "detail": "Run before pushing.",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "Lint: ruff + mypy",
+        "Test: fast ladder",
+        "Check: environment contract",
+        "Check: production publishes only the edge"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}
