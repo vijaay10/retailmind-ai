@@ -35,7 +35,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
-      - run: uv sync --all-packages
+      # `--extra dagster`, not a bare sync: `test_dagster_orchestration.py`
+      # imports dagster unconditionally, and dagster is an optional extra. A
+      # bare sync therefore fails *collection* — pytest exits 2 having run no
+      # tests at all, so one uninstalled optional dependency took down the
+      # whole ladder. Not `--all-extras`: that also drags in Airflow, whose
+      # own pyproject comment calls its pin set too invasive, for DAGs this
+      # repository does not have.
+      - run: uv sync --all-packages --extra dagster
       - name: Run the fast ladder with coverage
         run: |
           uv run pytest backend/tests/unit data_platform/tests/unit ml/tests ui/tests \

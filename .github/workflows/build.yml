@@ -71,7 +71,11 @@ jobs:
             RM_APP_VERSION=${{ github.sha }}
 
       - name: Scan for known vulnerabilities
-        uses: aquasecurity/trivy-action@0.28.0
+        # Upstream retagged its releases with a `v` prefix and 0.28.0 no
+        # longer resolves, which failed the job at "Prepare all required
+        # actions" — before checkout, so no image was ever built and the log
+        # showed nothing about Docker.
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: local/${{ matrix.name }}:scan
           format: table
@@ -84,7 +88,7 @@ jobs:
 
       - name: Report every finding, including the unfixable ones
         if: always()
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: local/${{ matrix.name }}:scan
           format: sarif
