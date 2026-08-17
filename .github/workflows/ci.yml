@@ -43,6 +43,14 @@ jobs:
       # own pyproject comment calls its pin set too invasive, for DAGs this
       # repository does not have.
       - run: uv sync --all-packages --extra dagster
+      # The Dagster assets wrap the dbt project, and `dagster_dbt` resolves
+      # `dbt/target/manifest.json` at *import* time. That file is a build
+      # artifact and is gitignored, so it exists on any machine that has run
+      # dbt and never on a fresh checkout — the test passed locally and failed
+      # in CI for that reason alone. `dbt parse` regenerates it in a couple of
+      # seconds without touching a database.
+      - name: Generate the dbt manifest the Dagster assets import
+        run: cd data_platform/dbt && uv run dbt parse --profiles-dir .
       - name: Run the fast ladder with coverage
         run: |
           uv run pytest backend/tests/unit data_platform/tests/unit ml/tests ui/tests \
