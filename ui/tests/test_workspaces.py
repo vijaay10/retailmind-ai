@@ -754,7 +754,21 @@ def test_command_center_loads_without_error(workspace: Any) -> None:
         },
     )
     assert not app.exception
-    assert "Good" in app.markdown[0].value  # Greeting should be present
+
+    # The greeting, wherever it lands among the rendered blocks.
+    #
+    # Not `app.markdown[0]`: `design.configure()` emits the global stylesheet
+    # as the first `st.markdown` call, so indexing by position asserted
+    # against a `<style>` block and failed for a reason that had nothing to do
+    # with the greeting. Matching the greeting text itself is also stricter
+    # than the old `"Good" in ...`, which any block containing that word
+    # anywhere would have satisfied.
+    rendered = [block.value for block in app.markdown]
+    assert any(
+        greeting in value
+        for value in rendered
+        for greeting in ("Good morning", "Good afternoon", "Good evening")
+    ), "the Command Center greeting did not render"
 
 
 def test_investigation_loads_without_error(workspace: Any) -> None:
