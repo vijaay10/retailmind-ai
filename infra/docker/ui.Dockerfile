@@ -30,6 +30,14 @@ LABEL org.opencontainers.image.source="https://github.com/OWNER/retailmind-ai" \
       org.opencontainers.image.title="retailmind/ui" \
       org.opencontainers.image.description="Operator console"
 
+# The base image ships with known-fixable OS vulnerabilities (9 HIGH at the
+# time of writing, e.g. bsdutils CVE-2026-53615). Upgrading here picks up the
+# distro's fixed versions; without it the image scan gate fails on packages
+# this project neither chose nor uses directly.
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd -g 10001 app && useradd -u 10001 -g app -m app
 
 COPY --from=builder --chown=app:app /srv/.venv /srv/.venv
