@@ -52,6 +52,14 @@ jobs:
       - name: Generate the dbt manifest the Dagster assets import
         run: cd data_platform/dbt && uv run dbt parse --profiles-dir .
       - name: Run the fast ladder with coverage
+        # A distinct filename per job, and the reason is subtle: pytest-cov
+        # writes one file literally named `.coverage`, not the `.coverage.*`
+        # suffixed form `coverage combine` looks for. Two jobs both uploading
+        # `.coverage` then merge into one path, so the second overwrote the
+        # first and `combine` reported "No data to combine" — a green-looking
+        # pipeline that measured nothing.
+        env:
+          COVERAGE_FILE: .coverage.unit
         run: |
           uv run pytest backend/tests/unit data_platform/tests/unit ml/tests ui/tests \
             -q --cov --cov-report= --cov-context=test
@@ -76,6 +84,9 @@ jobs:
       - uses: astral-sh/setup-uv@v3
       - run: uv sync --all-packages
       - name: Run integration suites with coverage
+        # Distinct from the unit job's file — see the note there.
+        env:
+          COVERAGE_FILE: .coverage.integration
         run: |
           uv run pytest backend/tests/integration -m integration \
             -q --cov --cov-report= --cov-context=test
