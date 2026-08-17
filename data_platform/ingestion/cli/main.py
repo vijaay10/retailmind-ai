@@ -332,6 +332,20 @@ def onboard(
         typer.Option(help="Skip detection and validate against a known source (e.g. 'pos')"),
     ] = None,
     table: Annotated[str | None, typer.Option(help="Paired with --source")] = None,
+    tenant: Annotated[
+        str | None,
+        typer.Option(help="Tenant slug to import into. Required with --confirm-import"),
+    ] = None,
+    confirm_import: Annotated[
+        bool,
+        typer.Option(
+            "--confirm-import",
+            help="Import after validating. Without this the command only reports.",
+        ),
+    ] = False,
+    root: Annotated[Path, typer.Option(help="Where tenant lakes and warehouses live")] = Path(
+        ".local"
+    ),
 ) -> None:
     """Detect, map, and validate an arbitrary uploaded file — Prompt 12.
 
@@ -395,6 +409,93 @@ def onboard(
     for issue in report.issues:
         mark = "✕" if issue.severity == "error" else "⚠"
         typer.echo(f"  {mark} {issue.message}")
+
+    # What counts as "blocking" defers to the pipeline's own policy rather
+    # than inventing a stricter one here. Ingestion already rejects bad rows
+    # and quarantines the batch only when the reject rate exceeds
+    # `reject_rate_threshold`; a gate that refused any file with a single bad
+    # row would be a second, harsher data-quality rule sitting in front of the
+    # real one, and would reject files the platform is designed to handle.
+    reject_rate = 1.0 - (report.valid_pct / 100.0)
+    threshold = EtlSettings().reject_rate_threshold
+    structural = report.valid_records == 0
+    over_threshold = reject_rate > threshold
+    blocking = structural or over_threshold
+
+    # Step 4 of the customer journey: the report is shown, and importing is a
+    # separate, explicit decision. Reporting and importing in one step would
+    # mean a file is in the warehouse before anyone has read why it should not
+    # be.
+    if not confirm_import:
+        typer.echo("")
+        if structural:
+            typer.echo("Fix these issues before importing — no record is currently usable.")
+        elif over_threshold:
+            typer.echo(
+                f"Fix these issues before importing — {reject_rate:.1%} of records have "
+                f"errors, above the {threshold:.1%} the pipeline accepts, so the whole "
+                "batch would be quarantined rather than loaded."
+            )
+        else:
+            typer.echo(
+                f"Ready to import. {report.valid_records:,} of {report.total_records:,} "
+                f"records are usable; the rest will be rejected and reported."
+            )
+            typer.echo("  Re-run with:  --tenant <slug> --confirm-import")
+        return
+
+    if tenant is None:
+        typer.echo("\n--confirm-import needs --tenant <slug>: data belongs to a company.", err=True)
+        raise typer.Exit(code=2)
+    if blocking:
+        reason = (
+            "no record is usable"
+            if structural
+            else f"{reject_rate:.1%} of records have errors, above the {threshold:.1%} limit"
+        )
+        typer.echo(f"\nRefusing to import: {reason}. Nothing was written.", err=True)
+        raise typer.Exit(code=1)
+
+    from onboarding.importing import ImportRefusedError, import_mapped_rows, tenant_paths
+
+    typer.echo(f"\nImporting into '{tenant}'...")
+    try:
+        result = import_mapped_rows(
+            mapped_rows, schema, tenant_slug=tenant, settings=tenant_paths(tenant, root)
+        )
+    except ImportRefusedError as exc:
+        typer.echo(f"  Import refused: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo("\nImport result:")
+    if result.unchanged:
+        typer.echo("  Status             Already imported — this exact file is already in place")
+    elif result.replaced_existing:
+        typer.echo("  Status             Imported, replacing a previous upload for these dates")
+    else:
+        typer.echo("  Status             Imported")
+    typer.echo(f"  Dataset            {result.dataset}")
+    typer.echo(f"  Company            {result.tenant_slug}")
+    typer.echo(f"  Dates covered      {result.partitions[0]} to {result.partitions[-1]}")
+    typer.echo(f"  Rows accepted      {result.rows_loaded:,}")
+    typer.echo(f"  Rows rejected      {result.rows_rejected:,}")
+    if result.replaced_existing:
+        typer.echo(f"  Rows replaced      {result.rows_replaced:,} (re-import of the same dates)")
+    for warning in result.warnings:
+        typer.echo(f"  ⚠ {warning}")
+    if result.quarantined:
+        typer.echo(f"  ✕ Quarantined      {', '.join(result.quarantined)}")
+    typer.echo(f"  Imported at        {result.imported_at:%Y-%m-%d %H:%M:%S} UTC")
+    typer.echo(f"  Stored in          {result.warehouse_path}")
+
+    if not result.succeeded:
+        raise typer.Exit(code=1)
+
+    typer.echo(
+        "\nNext: build the analytics layer for this company —\n"
+        f"  RM_WAREHOUSE_DUCKDB_PATH={result.warehouse_path} \\\n"
+        "    uv run dbt build --profiles-dir . --project-dir data_platform/dbt"
+    )
 
 
 def verify(path: Path) -> None:

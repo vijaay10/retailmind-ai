@@ -18,9 +18,12 @@ company gets:
   proposes a column-name mapping onto the platform's canonical schema, and
   validates the mapped data — **real and tested today, reachable via the
   ETL command line, not yet wired into the browser.**
-- Its own analytics dashboard reading from its own data — **not real yet.**
-  The warehouse today is one shared DuckDB file for the whole platform; see
-  "The one real gap" below.
+- Import of that validated data into its own warehouse, through the
+  existing ingestion pipeline — **real and tested today (Prompt 19),
+  command line only.** See "How to onboard a file today".
+- Its own analytics reading from its own data — **real today (Prompt 12.5).**
+  Each tenant resolves to its own DuckDB file by slug; building the
+  analytics layer after an import is still a separate `dbt build`.
 
 ---
 
@@ -107,10 +110,25 @@ Validation:
 `docs/prompt-12-productization-report.md` §12 for the full transcript,
 including a run that correctly found and reported real defects.)
 
-**Nothing is imported by this command.** It stops at the printed report.
-Wiring the confirmed mapping into an actual ingestion run (landing →
-staging → warehouse) for a *new* tenant is the one piece this pass didn't
-build — see "The one real gap" below for why, and what it would take.
+**By default nothing is imported** — the command stops at the report, so
+the mapping can be reviewed before any data moves. Importing is a second,
+explicit step:
+
+```bash
+uv run retailmind-etl onboard your_file.csv --tenant your-company --confirm-import
+```
+
+That runs the confirmed rows through the *existing* ingestion pipeline —
+landing → bronze → the tenant's own DuckDB warehouse — and prints what
+happened: dates covered, rows accepted, rows rejected, rows replaced, and
+where the data was stored. Run dbt against that warehouse and the
+analytics, forecasting and recommendation surfaces read it.
+
+The gate is deliberate. The command refuses to import when no record is
+usable, or when the share of bad rows exceeds the pipeline's own
+`reject_rate_threshold` — in which case the batch would be quarantined
+rather than loaded, and telling you first is more useful than letting you
+discover it afterwards.
 
 ---
 
@@ -279,21 +297,24 @@ fabricated per-source timestamp grid was deliberately not built.
 
 1. ~~The warehouse is not tenant-isolated.~~ **🟢 RESOLVED 2026-08-17,
    Prompt 12.5** — see the "Tenant isolation" section above.
-2. No self-serve "create a company" UI flow — tenant creation is a
+2. ~~Validated data cannot be imported.~~ **🟢 RESOLVED 2026-08-17,
+   Prompt 19** — `--confirm-import` runs the confirmed mapping through the
+   existing pipeline into the tenant's warehouse. Still CLI, not browser.
+3. No self-serve "create a company" UI flow — tenant creation is a
    repository-level operation today (used directly in tests), not exposed
    through an unauthenticated signup endpoint. Adding one is a real
    authentication-surface decision, not made unilaterally here.
-3. Browser-based file upload isn't wired to the detection/mapping engine —
+4. Browser-based file upload isn't wired to the detection/mapping engine —
    it lives in `data_platform`, which depends on `dbt-core`/`duckdb`/
    `great-expectations` even for this lightweight use, and neither the API
    nor UI container installs that toolchain (a deliberate, pre-existing
    security boundary — see `infra/docker/api.Dockerfile`'s own comment).
    The engine is real and runs today via `retailmind-etl onboard`.
-4. CSV only — no XLSX/Parquet parsing, no external connectors (Prompt 12
+5. CSV only — no XLSX/Parquet parsing, no external connectors (Prompt 12
    explicitly said not to build these without an existing implementation).
-5. No store/product hierarchy configuration, no business-rule
+6. No store/product hierarchy configuration, no business-rule
    configuration UI (nothing downstream reads either yet).
-6. Returns, promotions, pricing, customer, and targets/budgets have no
+7. Returns, promotions, pricing, customer, and targets/budgets have no
    canonical schema.
 
 ## Future connector architecture
