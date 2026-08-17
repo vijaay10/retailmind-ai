@@ -1,4 +1,4 @@
-"""Scenario simulator: definitions and runs (DB §39; PRD F-12).
+"""Scenario simulator: definitions and runs (DB; PRD F-12).
 
 Assumptions (elasticity source + CI) are columns, not prose — provenance is a
 display requirement (US-06).
@@ -30,7 +30,7 @@ class Scenario(Base, TenantScopedMixin, TimestampMixin):
     )
     source_recommendation_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("recommendation.id", ondelete="SET NULL"),
-        comment="Set when launched from a rec's [Simulate] bridge (Backend §29)",
+        comment="Set when launched from a rec's [Simulate] bridge (Backend)",
     )
 
     runs: Mapped[list["ScenarioRun"]] = relationship(

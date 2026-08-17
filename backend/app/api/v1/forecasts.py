@@ -1,4 +1,4 @@
-"""Forecasting endpoints (Analytics M7, ARCH §28).
+"""Forecasting endpoints (Analytics M7,).
 
 Five targets — revenue, sales, demand, inventory, profit — plus the accuracy
 scoreboard and per-forecast explanations.

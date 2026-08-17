@@ -35,7 +35,7 @@ from app.domain.shared.errors import DependencyError, ValidationDomainError
 log = structlog.get_logger(__name__)
 
 #: Hard cap on rows returned to an interactive caller. Anything larger is an
-#: export, which is a job, not a request (Backend §26).
+#: export, which is a job, not a request (Backend).
 MAX_ROWS = 5_000
 
 
@@ -77,7 +77,7 @@ class QueryResult:
 
     @property
     def meta(self) -> dict[str, Any]:
-        """The provenance block every API response carries (ARCH §13.2)."""
+        """The provenance block every API response carries (ARCH.2)."""
         return {
             "row_count": self.row_count,
             "data_snapshot_id": self.snapshot_id,
@@ -279,7 +279,7 @@ class SemanticLayerClient:
             sql.append(f"ORDER BY {ordering}")
 
         # Always bounded. An unbounded interactive query is a self-inflicted
-        # outage waiting for the day the table gets big (DB design §32).
+        # outage waiting for the day the table gets big (DB design).
         sql.append(f"LIMIT {min(query.limit, MAX_ROWS) + 1} OFFSET {max(query.offset, 0)}")
 
         return "\n".join(sql), params

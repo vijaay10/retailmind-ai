@@ -1,4 +1,4 @@
-"""AI Business Analyst endpoint (Analytics §14).
+"""AI Business Analyst endpoint (Analytics).
 
 One conversational surface over everything the platform can do: answering
 questions, explaining KPIs, investigating movements, recommending actions,

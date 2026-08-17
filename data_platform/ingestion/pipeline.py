@@ -1,4 +1,4 @@
-"""Pipeline orchestrator — the stage chain, end to end (ETL design §1).
+"""Pipeline orchestrator — the stage chain, end to end.
 
     discover → conform → validate → land → load → reconcile → record
 

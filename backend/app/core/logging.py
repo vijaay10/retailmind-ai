@@ -1,6 +1,6 @@
-"""Structured logging setup (Backend design §13, ARCH §17).
+"""Structured logging setup (Backend design,).
 
-JSON to stdout — shipping is the platform's job (DevOps §14). Request context
+JSON to stdout — shipping is the platform's job (DevOps). Request context
 (request_id, tenant, user) is bound by middleware into contextvars so every
 downstream log line carries it without threading arguments through call stacks.
 
@@ -39,7 +39,7 @@ _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 def _scrub(
     _logger: Any, _method: str, event_dict: MutableMapping[str, Any]
 ) -> MutableMapping[str, Any]:
-    """Redact secrets and pseudonymize emails (ARCH §17 PII discipline)."""
+    """Redact secrets and pseudonymize emails (ARCH PII discipline)."""
     for key, value in list(event_dict.items()):
         if key.lower() in _SENSITIVE_KEYS:
             event_dict[key] = "***"

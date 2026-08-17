@@ -1,4 +1,4 @@
-"""Warehouse loading: bronze → RAW, incrementally and idempotently (ETL §24).
+"""Warehouse loading: bronze → RAW, incrementally and idempotently (ETL).
 
 The load is a *partition overwrite*, not an append: the window's existing rows
 are deleted and re-inserted inside one transaction. That single choice is what

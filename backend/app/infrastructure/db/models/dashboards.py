@@ -1,4 +1,4 @@
-"""User-owned analytical assets: saved queries, dashboards, tiles (DB §12.2).
+"""User-owned analytical assets: saved queries, dashboards, tiles (DB.2).
 
 Saved answers persist as *semantic queries* (re-executed on view), never cached
 data — the US-08 contract.
@@ -22,7 +22,7 @@ from app.infrastructure.db.models.base import (
 class SavedQuery(Base, TenantScopedMixin, TimestampMixin):
     __tablename__ = "saved_query"
     __table_args__ = (
-        # Impact analysis: "which tiles use metric X" (DB §12 GIN)
+        # Impact analysis: "which tiles use metric X" (DB GIN)
         Index(
             "ix_saved_query_semantic",
             "semantic_query",
@@ -44,7 +44,7 @@ class SavedQuery(Base, TenantScopedMixin, TimestampMixin):
         comment="Cron for scheduled refresh; NULL = ad hoc"
     )
     deleted_at: Mapped[datetime | None] = mapped_column(
-        comment="Soft delete: product-visible restore matters here (DB §12 conventions)"
+        comment="Soft delete: product-visible restore matters here (DB conventions)"
     )
 
 
@@ -62,7 +62,7 @@ class Dashboard(Base, TenantScopedMixin, TimestampMixin):
         comment="NULL = system dashboard (executive, sales…) — not user-deletable",
     )
     layout_version: Mapped[int] = mapped_column(
-        server_default=text("1"), comment="Optimistic concurrency token (Backend §18)"
+        server_default=text("1"), comment="Optimistic concurrency token (Backend)"
     )
 
     tiles: Mapped[list["DashboardTile"]] = relationship(
@@ -77,12 +77,12 @@ class DashboardTile(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     dashboard_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("dashboard.id", ondelete="CASCADE"))
     saved_query_id: Mapped[uuid.UUID | None] = mapped_column(
-        # RESTRICT: warn the user about tile usage before deleting a query (DB §21 R5)
+        # RESTRICT: warn the user about tile usage before deleting a query (DB R5)
         ForeignKey("saved_query.id", ondelete="RESTRICT"),
     )
     position: Mapped[int] = mapped_column(comment="Grid order within the dashboard")
     tile_spec: Mapped[JSONDict] = mapped_column(
-        comment="Declarative {semantic_query|ref, chart_spec, thresholds} (ARCH §25)"
+        comment="Declarative {semantic_query|ref, chart_spec, thresholds} (ARCH)"
     )
     created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
 

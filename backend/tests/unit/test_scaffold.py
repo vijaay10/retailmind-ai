@@ -1,7 +1,7 @@
 """Scaffold smoke tests: the app factory boots and serves liveness.
 
 These exist so `make test` and CI are green from commit one; they are replaced
-by real suites as modules land (Backend design §35–37).
+by real suites as modules land (Backend design–37).
 """
 
 from fastapi.testclient import TestClient

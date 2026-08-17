@@ -1,4 +1,4 @@
-"""Tenancy and identity: tenant, users, roles, tokens, API keys (DB §1, §12.2)."""
+"""Tenancy and identity: tenant, users, roles, tokens, API keys (DB,.2)."""
 
 import uuid
 from datetime import datetime
@@ -19,7 +19,7 @@ from app.infrastructure.db.models.enums import UserStatus
 
 
 class Tenant(Base, TimestampMixin):
-    """Root of all row scoping (DB §21 R1). Offboarding is a runbook, never a cascade."""
+    """Root of all row scoping (DB R1). Offboarding is a runbook, never a cascade."""
 
     __tablename__ = "tenant"
 
@@ -29,19 +29,56 @@ class Tenant(Base, TimestampMixin):
     plan: Mapped[str] = mapped_column(server_default=text("'standard'"))
     base_currency: Mapped[str] = mapped_column(
         server_default=text("'USD'"),
-        comment="ISO-4217; facts store base-currency amounts (ETL §15)",
+        comment="ISO-4217; facts store base-currency amounts (ETL)",
     )
     llm_budget_tokens_month: Mapped[int] = mapped_column(
         BigInteger,
         server_default=text("5000000"),
-        comment="Hard cap enforced via Redis counters, reconciled against llm_usage (Backend §20)",
+        comment="Hard cap enforced via Redis counters, reconciled against llm_usage (Backend)",
+    )
+
+    # Company profile (Prompt 12 onboarding). All nullable and additive: the
+    # demo tenant predates these and is not required to backfill them, and
+    # nothing in the analytics/forecasting/recommendation engines reads them
+    # today — they are onboarding metadata, not inputs to business logic yet.
+    # Store/product *hierarchy* (department→category→subcategory, or
+    # country→region→city→store) is deliberately not modeled as tenant
+    # config here: that would mean per-tenant-configurable dimension-table
+    # schemas, a materially larger change than a profile field, and no
+    # existing dbt model or analytics query varies its hierarchy depth by
+    # tenant today. Documented as a real limitation, not built.
+    industry: Mapped[str | None] = mapped_column(
+        comment="Free-text industry/sub-industry, e.g. 'Apparel — Fashion Retail'"
+    )
+    country_code: Mapped[str | None] = mapped_column(comment="ISO 3166-1 alpha-2, e.g. 'US'")
+    timezone: Mapped[str | None] = mapped_column(
+        server_default=text("'UTC'"), comment="IANA timezone name, e.g. 'America/New_York'"
+    )
+    fiscal_year_start_month: Mapped[int | None] = mapped_column(
+        SmallInteger,
+        server_default=text("1"),
+        comment="1-12; 1 means the fiscal year matches the calendar year",
+    )
+
+    # Warehouse isolation (Prompt 12.5). NULL means "use the default
+    # convention" (`{WAREHOUSE_ROOT}/{slug}.duckdb` — see
+    # `app.infrastructure.semantic.tenancy.resolve_warehouse_path`), which is
+    # every tenant except the demo one: the demo tenant's warehouse predates
+    # this column and lives at whatever `RM_WAREHOUSE_DUCKDB_PATH` already
+    # pointed at, so its row gets an explicit override instead of a rename —
+    # a rename would mean re-mounting the compose volume in every
+    # environment for no functional gain. This is the ONE column this
+    # migration adds; isolation itself comes from separate files, not from
+    # this column being present (see docs/multi-tenancy-architecture.md).
+    warehouse_path: Mapped[str | None] = mapped_column(
+        comment="Explicit DuckDB file path override; NULL uses the per-slug convention"
     )
 
     users: Mapped[list["AppUser"]] = relationship(back_populates="tenant")
 
 
 class AppUser(Base, TimestampMixin):
-    """Application user. ``user`` is a reserved word — table is app_user (DB §25)."""
+    """Application user. ``user`` is a reserved word — table is app_user (DB)."""
 
     __tablename__ = "app_user"
     __table_args__ = (
@@ -61,7 +98,7 @@ class AppUser(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(server_default=text("'active'"))
     token_version: Mapped[int] = mapped_column(
         server_default=text("1"),
-        comment="Bumped on password/role change to invalidate outstanding JWTs (Backend §8)",
+        comment="Bumped on password/role change to invalidate outstanding JWTs (Backend)",
     )
     last_login_at: Mapped[datetime | None]
 
@@ -78,7 +115,7 @@ class AppUser(Base, TimestampMixin):
 
 
 class Role(Base):
-    """Fixed role catalog: admin / analyst / viewer (seeded; DB §34 two-plane model)."""
+    """Fixed role catalog: admin / analyst / viewer (seeded; DB two-plane model)."""
 
     __tablename__ = "role"
     __table_args__ = (enum_check("key", RoleKey),)
@@ -89,7 +126,7 @@ class Role(Base):
 
 
 class UserRole(Base):
-    """M:N user↔role. Detail rows are meaningless without the user → CASCADE (DB §21)."""
+    """M:N user↔role. Detail rows are meaningless without the user → CASCADE (DB)."""
 
     __tablename__ = "user_role"
 
@@ -106,7 +143,7 @@ class UserRole(Base):
 
 
 class RefreshToken(Base):
-    """Rotating refresh tokens with family-level theft detection (Backend §8).
+    """Rotating refresh tokens with family-level theft detection (Backend).
 
     Reuse of a rotated (superseded) token revokes the whole ``family_id``.
     """
@@ -130,7 +167,7 @@ class RefreshToken(Base):
 
 
 class ApiKey(Base, TimestampMixin):
-    """Tenant-scoped programmatic access keys (prefix stored, secret hashed; Backend §8)."""
+    """Tenant-scoped programmatic access keys (prefix stored, secret hashed;)."""
 
     __tablename__ = "api_key"
 
@@ -142,7 +179,7 @@ class ApiKey(Base, TimestampMixin):
     key_hash: Mapped[str] = mapped_column(comment="SHA-256 of the full key")
     name: Mapped[str]
     scopes: Mapped[JSONDict] = mapped_column(
-        server_default=text("'[]'::jsonb"), comment="Permission subset (Backend §9 verbs)"
+        server_default=text("'[]'::jsonb"), comment="Permission subset (Backend verbs)"
     )
     last_used_at: Mapped[datetime | None]
     revoked_at: Mapped[datetime | None]

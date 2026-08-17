@@ -31,6 +31,7 @@ ALL_WORKSPACES = [
     "10_Risk_Center.py",
     "11_Executive_Briefing.py",
     "12_Admin.py",
+    "13_Data_Sources.py",
 ]
 
 FORECAST_BODY: dict[str, Any] = {
@@ -106,7 +107,13 @@ def test_every_workspace_survives_an_api_that_answers_nothing(
     """Empty bodies everywhere. A workspace may show nothing; it may not crash,
     because the state it is least tested in is the one a new deployment is in.
     """
-    app = workspace(name, user={**manager, "permissions": [*manager["permissions"], "admin.users"]})
+    app = workspace(
+        name,
+        user={
+            **manager,
+            "permissions": [*manager["permissions"], "admin.users", "data.manage"],
+        },
+    )
     assert not app.exception, texts(app.exception)
 
 
@@ -266,6 +273,31 @@ def test_a_failed_call_reports_the_outage_instead_of_a_blank_screen(
     )
     rendered = markup(app)
     assert "connection refused" in rendered
+    assert not app.dataframe
+
+
+def test_an_unprovisioned_tenant_sees_a_calm_setup_state_not_an_outage(
+    workspace: Any, markup: Any
+) -> None:
+    """Prompt 13: a brand-new tenant's warehouse not being provisioned yet
+    (a real 503 `dependency-unavailable`, Prompt 12.5's own honest failure
+    mode) must not read the same as the product being broken. Same
+    ``ApiError`` type as the outage test above — only the status differs —
+    proving the distinction is in `workspace_error`, not in a special-cased
+    workspace."""
+    app = workspace(
+        "1_Command_Center.py",
+        responses={
+            "/api/v1/dashboard/executive": ApiError(
+                status=503,
+                title="Unavailable",
+                detail="warehouse is temporarily unavailable.",
+            )
+        },
+    )
+    rendered = markup(app)
+    assert "still being set up" in rendered
+    assert "warehouse is temporarily unavailable" not in rendered
     assert not app.dataframe
 
 
@@ -670,3 +702,215 @@ def test_the_drill_filter_is_a_dimension_name_and_a_value(workspace: Any) -> Non
     assert name in ("region", "category")
     assert value == "Midwest'; DROP TABLE fct_sales--"
     assert path.as_params == {"region": "Midwest'; DROP TABLE fct_sales--"}
+
+
+# ── Smoke tests ──────────────────────────────────────────────────────
+
+
+def test_command_center_loads_without_error(workspace: Any) -> None:
+    """Verify Command Center workspace loads with minimal valid data."""
+    app = workspace(
+        "1_Command_Center.py",
+        responses={
+            "/api/v1/dashboard/executive": {
+                "revenue": {
+                    "cards": [
+                        {
+                            "key": "net_revenue",
+                            "value": 100_000,
+                            "direction": "up",
+                            "change_pct": 0.05,
+                        }
+                    ],
+                    "comparison_basis": "vs prior day",
+                },
+                "growth": {
+                    "horizons": [
+                        {
+                            "horizon": "week",
+                            "current_revenue": 700_000,
+                            "change_pct": 0.03,
+                            "days": 7,
+                        }
+                    ]
+                },
+                "alerts": {"alerts": [], "counts": {}},
+                "top_products": [],
+                "inventory_risk": [],
+                "sections_unavailable": [],
+            },
+            "/api/v1/recommendations": {
+                "recommendations": [],
+                "count": 0,
+                "by_category": {},
+                "gross_profit_opportunity": 0,
+                "net_profit_opportunity": 0,
+                "capital_freed": 0,
+                "categories_requested": [],
+                "caveats": [],
+                "meta": {},
+            },
+            "/api/v1/dashboard/revenue/trend": {"series": []},
+        },
+    )
+    assert not app.exception
+    assert "Good" in app.markdown[0].value  # Greeting should be present
+
+
+def test_investigation_loads_without_error(workspace: Any) -> None:
+    """Verify AI Investigation workspace loads with minimal valid data."""
+    app = workspace(
+        "2_AI_Investigation.py",
+        responses={
+            "/api/v1/rca/investigate": {
+                "change": -5000,
+                "relative_change": -0.05,
+                "baseline_value": 100_000,
+                "current_value": 95_000,
+                "current": {"start": "2026-08-07", "end": "2026-08-13", "days": 7},
+                "baseline": {"start": "2026-07-31", "end": "2026-08-06", "days": 7},
+                "where": [],
+                "why": [],
+                "dimensions_investigated": ["region", "category", "channel"],
+                "dimensions_unavailable": {},
+                "explained_share": 0,
+                "caveats": [],
+                "meta": {},
+            }
+        },
+    )
+    assert not app.exception
+
+
+def test_decision_center_loads_without_error(workspace: Any) -> None:
+    """Verify Decision Center workspace loads with minimal valid data."""
+    app = workspace(
+        "3_Decision_Center.py",
+        responses={
+            "/api/v1/recommendations": {
+                "recommendations": [],
+                "count": 0,
+                "by_category": {},
+                "gross_profit_opportunity": 0,
+                "net_profit_opportunity": 0,
+                "capital_freed": 0,
+                "categories_requested": [],
+                "decided_count": 0,
+                "categories_empty": {},
+                "caveats": [],
+                "meta": {},
+            },
+            "/api/v1/recommendations/decisions": {
+                "decisions": [],
+                "count": 0,
+                "accepted_profit": 0,
+            },
+            "/api/v1/recommendations/calibration": {
+                "total_measured_outcomes": 0,
+                "total_pending_outcomes": 0,
+                "total_failed_outcomes": 0,
+                "overall_metrics": {
+                    "sample_size": 0,
+                    "is_statistically_significant": False,
+                },
+                "generator_performance": [],
+                "best_performing_generators": [],
+                "needs_calibration": [],
+                "confidence_calibration": [],
+                "horizon_breakdown": {},
+                "limitations": [],
+            },
+        },
+    )
+    assert not app.exception
+
+
+def test_ai_analyst_loads_without_error(workspace: Any) -> None:
+    """Verify AI Analyst workspace loads with minimal valid data."""
+    app = workspace(
+        "4_AI_Analyst.py",
+        responses={
+            "/api/v1/analyst/ask": {
+                "question": "What is net revenue?",
+                "capability": "explain_kpi",
+                "headline": "Net revenue is gross sales minus returns and discounts.",
+                "facts": [],
+                "inferences": [],
+                "checked": [],
+                "not_checked": [],
+                "caveats": [],
+                "follow_ups": [],
+                "data": {},
+                "meta": {},
+            }
+        },
+        state={"rm_analyst_question": "What is net revenue?"},
+    )
+    assert not app.exception
+
+
+def test_forecast_loads_without_error(workspace: Any) -> None:
+    """Verify Forecast workspace loads with minimal valid data."""
+    app = workspace(
+        "9_Forecast_Intelligence.py",
+        responses={
+            FORECAST: FORECAST_BODY,
+            ACCURACY: {
+                "summary": {
+                    "horizon_days": 14,
+                    "mase": 0.74,
+                    "wape": 0.11,
+                    "beats_naive": True,
+                    "sample_days": 42,
+                }
+            },
+        },
+    )
+    assert not app.exception
+
+
+def test_executive_briefing_loads_without_error(workspace: Any) -> None:
+    """Verify Executive Briefing workspace loads with minimal valid data."""
+    app = workspace(
+        "11_Executive_Briefing.py",
+        responses={
+            "/api/v1/reports": {
+                "title": "Retail Performance Review",
+                "period_label": "28 days to 2026-08-13",
+                "generated_at": "2026-08-14T10:00:00",
+                "sections": [],
+                "caveats": [],
+                "meta": {},
+            }
+        },
+    )
+    assert not app.exception
+
+
+def test_risk_center_loads_without_error(workspace: Any) -> None:
+    """Verify Risk Center workspace loads with minimal valid data."""
+    app = workspace(
+        "10_Risk_Center.py",
+        responses={
+            "/api/v1/notifications": {
+                "notifications": [],
+                "unread_count": 0,
+                "total_count": 0,
+            },
+            "/api/v1/inventory/supplier-risk": {"data": []},
+            "/api/v1/inventory/stockout-risk": {"data": []},
+        },
+    )
+    assert not app.exception
+
+
+def test_admin_loads_without_error(workspace: Any) -> None:
+    """Verify Admin workspace loads with minimal valid data."""
+    app = workspace(
+        "12_Admin.py",
+        responses={
+            "/api/v1/users": {"users": [], "count": 0},
+            "/api/v1/roles": {"roles": [], "count": 0},
+        },
+    )
+    assert not app.exception

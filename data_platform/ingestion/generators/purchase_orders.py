@@ -1,4 +1,4 @@
-"""Synthetic purchase orders — the replenishment feed (Analytics §7, SE-1).
+"""Synthetic purchase orders — the replenishment feed (Analytics, SE-1).
 
 Purchase orders are what make lead time, supplier reliability, and inventory
 aging computable. Without them those questions have no honest answer, only a

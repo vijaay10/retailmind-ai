@@ -6,7 +6,6 @@ by a different path would eventually disagree with the screen, and the
 disagreement would surface as an alert nobody can reproduce.
 """
 
-import os
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -14,12 +13,16 @@ from contextlib import asynccontextmanager
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import WarehouseSettings
 from app.domain.auth.permissions import Permission, RoleKey, permissions_for
-from app.infrastructure.db.models.auth import AppUser, Role, UserRole
+from app.domain.shared.errors import NotFoundError
+from app.infrastructure.db.models.auth import AppUser, Role, Tenant, UserRole
+from app.infrastructure.db.repositories.auth import TenantRepository
 from app.infrastructure.db.repositories.notifications import NotificationRepository
 from app.infrastructure.db.session import create_engine, create_session_factory
 from app.infrastructure.semantic.client import SemanticLayerClient
 from app.infrastructure.semantic.repository import AnalyticsRepository
+from app.infrastructure.semantic.tenancy import resolve_warehouse_path
 from app.services.analytics.service import AnalyticsService
 from app.services.forecasting.service import ForecastingService
 from app.services.notifications.service import NotificationService, Recipient
@@ -62,8 +65,17 @@ class _RepositorySink:
         return dict(await self._repository.last_notified())
 
 
-def build_analytics() -> AnalyticsService:
-    warehouse = os.environ.get("RM_WAREHOUSE_DUCKDB_PATH", ".local/retailmind.duckdb")
+def build_analytics(tenant: Tenant) -> AnalyticsService:
+    """Analytics over the given tenant's own warehouse — never a fixed path.
+
+    Prompt 12.5: this used to read `RM_WAREHOUSE_DUCKDB_PATH` unconditionally,
+    ignoring which tenant the sweep was running for entirely — every tenant's
+    scheduled notification sweep read the same file the API's shared client
+    did before this pass, the identical bug at a different call site. Now
+    resolved the same way the API resolves it (`resolve_warehouse_path`), so
+    there is exactly one place in the codebase that knows the convention.
+    """
+    warehouse = resolve_warehouse_path(tenant, WarehouseSettings())
     return AnalyticsService(
         AnalyticsRepository(SemanticLayerClient(warehouse), _NoCache())  # type: ignore[arg-type]
     )
@@ -86,9 +98,12 @@ async def session_scope() -> AsyncIterator[AsyncSession]:
         await engine.dispose()
 
 
-def build_notification_service(tenant_id: str, session: AsyncSession) -> NotificationService:
+async def build_notification_service(tenant_id: str, session: AsyncSession) -> NotificationService:
     """The sweep, wired against a live session."""
-    analytics = build_analytics()
+    tenant = await TenantRepository(session).get(uuid.UUID(tenant_id))
+    if tenant is None:
+        raise NotFoundError("Tenant not found.")
+    analytics = build_analytics(tenant)
     repository = NotificationRepository(session, uuid.UUID(tenant_id))
     return NotificationService(
         analytics,

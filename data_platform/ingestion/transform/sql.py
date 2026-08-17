@@ -9,11 +9,11 @@ input, so what runs always matches what was reviewed.
 The compiled query is a chain of CTEs, each one a stage from the ETL design:
 
     raw          read as text — no coercion yet, nothing lost
-    normalized   trim, canonical nulls, case conformance          (§13)
-    typed        TRY_CAST per column, reject reason computed      (§8, §11)
-    deduped      natural-key resolution with a declared tiebreaker (§10)
-    standardized business date in the source's timezone,           (§16)
-                 money converted at the transaction-date rate      (§15)
+    normalized   trim, canonical nulls, case conformance
+    typed        TRY_CAST per column, reject reason computed
+    deduped      natural-key resolution with a declared tiebreaker
+    standardized business date in the source's timezone,
+                 money converted at the transaction-date rate
 
 Identifiers are validated when the schema loads (``SourceSchema.validate``),
 so interpolating them here cannot inject: they are matched against
@@ -55,7 +55,7 @@ def _literal(value: str) -> str:
 def _normalize_expr(spec: ColumnSpec, sentinels: tuple[str, ...]) -> str:
     """Trim, strip control characters, canonicalize sentinel nulls, case-fold.
 
-    Ordering matters and is fixed (ETL §13): trim before comparing against
+    Ordering matters and is fixed (ETL): trim before comparing against
     sentinels, or ``" NULL "`` survives as a literal string.
     """
     col = _quote(spec.name)
@@ -134,7 +134,7 @@ def _reject_reason_expr(schema: SourceSchema) -> str:
             branches.append(f"WHEN {col} IS NULL THEN {_literal(REASON_MISSING_MEASURE)}")
 
         # Corruption screening only — impossible values, never merely unusual
-        # ones. A $40k order might be Black Friday (ETL §11).
+        # ones. A $40k order might be Black Friday (ETL).
         if spec.min_value is not None:
             branches.append(f"WHEN {col} < {spec.min_value} THEN {_literal(REASON_IMPOSSIBLE)}")
         if spec.max_value is not None:
@@ -149,7 +149,7 @@ def _dedupe_order_by(schema: SourceSchema) -> str:
     With a declared tiebreaker (usually ``updated_at``), latest wins. Without
     one, ordering is stable but arbitrary — so the compiled query flags those
     groups instead of silently picking, and money-bearing rows get rejected
-    rather than guessed (ETL §10).
+    rather than guessed (ETL).
     """
     if schema.dedupe_tiebreaker:
         return f"{_quote(schema.dedupe_tiebreaker)} DESC NULLS LAST"
@@ -180,7 +180,7 @@ def build_conform_sql(
     casts = ",\n        ".join(_cast_expr(spec) for spec in schema.columns)
     raw_cols = ",\n        ".join(f"_raw_{spec.name}" for spec in schema.columns)
     final_cols = ",\n        ".join(_quote(spec.name) for spec in schema.columns)
-    # Missing-value policy, applied per column class (ETL §9): dimensions fall
+    # Missing-value policy, applied per column class (ETL): dimensions fall
     # back to a visible UNKNOWN member so the row stays analyzable and the gap
     # stays reconcilable; measures and keys were already rejected upstream;
     # descriptors keep their honest NULL.
@@ -193,7 +193,7 @@ def build_conform_sql(
         for spec in schema.columns
     )
 
-    # Business date in the store's own timezone (ETL §16).
+    # Business date in the store's own timezone (ETL).
     #
     # Two conversions, both explicit. Source timestamps are naive UTC
     # instants, so the first `AT TIME ZONE 'UTC'` states what the wall-clock
@@ -270,7 +270,7 @@ def build_rejects_sql(schema: SourceSchema, *, source_relation: str) -> str:
     """Companion query returning the rows the conform query dropped.
 
     Rejects keep their original text values plus a machine-readable reason:
-    they are *data* to be triaged, not log lines to be grepped (ETL §21, §23).
+    they are *data* to be triaged, not log lines to be grepped (ETL,).
     """
     sentinels = schema.sentinel_nulls
     normalized = ",\n        ".join(_normalize_expr(spec, sentinels) for spec in schema.columns)

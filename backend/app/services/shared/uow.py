@@ -1,4 +1,4 @@
-"""Unit of Work — explicit transaction control for services (Backend design §5).
+"""Unit of Work — explicit transaction control for services.
 
 The request-scoped session commits once, at the end of a successful request
 (``app.api.deps.get_session``). That is the right default: a handler that

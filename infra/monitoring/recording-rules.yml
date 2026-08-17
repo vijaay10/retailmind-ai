@@ -1,0 +1,139 @@
+# Prometheus recording rules for SLO tracking.
+#
+# Recording rules pre-compute expensive queries and store the results as new
+# time series. This reduces query load and enables fast SLO dashboard rendering.
+#
+# SLO methodology: Error budget tracking via success rate over rolling windows.
+
+groups:
+  # ── API SLO: Availability and Latency ──────────────────────────────────
+
+  - name: api_slo
+    interval: 30s
+    rules:
+      # Success rate (non-5xx responses)
+      - record: api:requests:success_rate:5m
+        expr: |
+          sum(rate(http_requests_total{job="api",status!~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total{job="api"}[5m]))
+
+      - record: api:requests:success_rate:1h
+        expr: |
+          sum(rate(http_requests_total{job="api",status!~"5.."}[1h]))
+          /
+          sum(rate(http_requests_total{job="api"}[1h]))
+
+      - record: api:requests:success_rate:24h
+        expr: |
+          sum(rate(http_requests_total{job="api",status!~"5.."}[24h]))
+          /
+          sum(rate(http_requests_total{job="api"}[24h]))
+
+      # Error budget burn rate (how fast we're consuming error budget)
+      # Target: 99.5% availability → 0.5% error budget
+      # Burn rate > 1.0 means consuming budget faster than sustainable
+      - record: api:error_budget:burn_rate:5m
+        expr: |
+          (1 - api:requests:success_rate:5m) / 0.005
+
+      - record: api:error_budget:burn_rate:1h
+        expr: |
+          (1 - api:requests:success_rate:1h) / 0.005
+
+      # Latency SLO: 95% of requests < 2 seconds
+      - record: api:latency:p95:5m
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket{job="api"}[5m])) by (le)
+          )
+
+      - record: api:latency:p95:1h
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket{job="api"}[1h])) by (le)
+          )
+
+      # Latency SLI: percentage of requests meeting latency target (<2s)
+      # Note: This is approximate; exact calculation requires custom buckets
+      - record: api:latency:sli:5m
+        expr: |
+          (
+            sum(rate(http_request_duration_seconds_bucket{job="api",le="2.0"}[5m]))
+            /
+            sum(rate(http_request_duration_seconds_count{job="api"}[5m]))
+          )
+
+  # ── Worker/Pipeline SLO: Task Success Rate ────────────────────────────
+
+  - name: pipeline_slo
+    interval: 60s
+    rules:
+      # Task success rate
+      - record: pipeline:tasks:success_rate:5m
+        expr: |
+          sum(rate(celery_tasks_total{job="worker",state="success"}[5m]))
+          /
+          sum(rate(celery_tasks_total{job="worker"}[5m]))
+
+      - record: pipeline:tasks:success_rate:1h
+        expr: |
+          sum(rate(celery_tasks_total{job="worker",state="success"}[1h]))
+          /
+          sum(rate(celery_tasks_total{job="worker"}[1h]))
+
+      - record: pipeline:tasks:success_rate:24h
+        expr: |
+          sum(rate(celery_tasks_total{job="worker",state="success"}[24h]))
+          /
+          sum(rate(celery_tasks_total{job="worker"}[24h]))
+
+      # Error budget (target: 99% task success)
+      - record: pipeline:error_budget:burn_rate:1h
+        expr: |
+          (1 - pipeline:tasks:success_rate:1h) / 0.01
+
+      # Detection sweep freshness (how long since last sweep completed)
+      - record: pipeline:sweep:age_seconds
+        expr: |
+          time() - retailmind_last_sweep_timestamp_seconds
+
+  # ── Database SLO: Connection and Query Performance ────────────────────
+
+  - name: database_slo
+    interval: 60s
+    rules:
+      # Database availability (1 if reachable, 0 if down)
+      - record: database:availability:5m
+        expr: |
+          avg_over_time(up{job="postgres"}[5m])
+
+      # Connection pool utilization (if metric exists)
+      # High utilization (>80%) indicates need to scale connections
+      - record: database:connections:utilization
+        expr: |
+          pg_stat_database_numbackends{datname="retailmind"}
+          /
+          on() scalar(pg_settings_max_connections)
+
+  # ── Overall System Health ──────────────────────────────────────────────
+
+  - name: system_health
+    interval: 60s
+    rules:
+      # Service availability (all critical services up)
+      - record: system:services:all_up
+        expr: |
+          min(up{job=~"api|postgres|worker|beat"})
+
+      # Critical alerts firing
+      - record: system:alerts:critical_firing
+        expr: |
+          count(ALERTS{severity="critical",alertstate="firing"})
+
+      # System-wide error rate (API errors + task failures)
+      - record: system:errors:rate:5m
+        expr: |
+          sum(rate(http_requests_total{job="api",status=~"5.."}[5m]))
+          +
+          sum(rate(celery_tasks_total{job="worker",state="failed"}[5m]))

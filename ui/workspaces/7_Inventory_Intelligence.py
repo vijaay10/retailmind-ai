@@ -30,7 +30,7 @@ def load(path: str, **params: object) -> dict[str, Any]:
     try:
         return client.get(path, **params)
     except ApiError as error:
-        ui.failure(str(error), what=f"{path.rsplit('/', 1)[-1]} did not load")
+        ui.workspace_error(error, what=f"{path.rsplit('/', 1)[-1]} did not load")
         return {}
 
 

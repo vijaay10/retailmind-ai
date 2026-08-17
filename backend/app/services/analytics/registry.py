@@ -82,7 +82,7 @@ def _dims(*pairs: tuple[str, str, str]) -> dict[str, Dimension]:
     return {key: Dimension(key=key, label=label, column=column) for key, label, column in pairs}
 
 
-# ── Revenue (Analytics §1) ───────────────────────────────────────────
+# ── Revenue (Analytics) ───────────────────────────────────────────
 
 REVENUE = Domain(
     key="revenue",
@@ -182,7 +182,7 @@ REVENUE = Domain(
 )
 
 
-# ── Store (Analytics §3) ─────────────────────────────────────────────
+# ── Store (Analytics) ─────────────────────────────────────────────
 
 STORE = Domain(
     key="store",
@@ -256,7 +256,7 @@ STORE = Domain(
 )
 
 
-# ── Customer (Analytics §2) ─────────────────────────────────────────
+# ── Customer (Analytics) ─────────────────────────────────────────
 #
 # Every customer domain reads a *segment-level* relation. Individual rows
 # exist in dim_customer for joins, but nothing here can project a person:
@@ -611,7 +611,7 @@ VIP = Domain(
 )
 
 
-# ── Inventory (Analytics §4) ─────────────────────────────────────────
+# ── Inventory (Analytics) ─────────────────────────────────────────
 
 INVENTORY = Domain(
     key="inventory",
@@ -680,7 +680,7 @@ INVENTORY = Domain(
 )
 
 
-# ── Marketing (Analytics §6) ─────────────────────────────────────────
+# ── Marketing (Analytics) ─────────────────────────────────────────
 
 MARKETING = Domain(
     key="marketing",
@@ -756,7 +756,7 @@ MARKETING = Domain(
 )
 
 
-# ── Profitability (Analytics §8) ─────────────────────────────────────
+# ── Profitability (Analytics) ─────────────────────────────────────
 
 PROFITABILITY = Domain(
     key="profitability",
@@ -825,7 +825,7 @@ PROFITABILITY = Domain(
 )
 
 
-# ── Product (Analytics §5) ───────────────────────────────────────────
+# ── Product (Analytics) ───────────────────────────────────────────
 
 PRODUCT = Domain(
     key="product",
@@ -892,7 +892,7 @@ PRODUCT = Domain(
 )
 
 
-# ── Inventory intelligence (Analytics §7) ────────────────────────────
+# ── Inventory intelligence (Analytics) ────────────────────────────
 #
 # The five domains below read *point-in-time* marts: one row per position (or
 # per supplier) as of the latest snapshot, not a time series. They therefore
@@ -1535,7 +1535,7 @@ WAREHOUSE_HEALTH = Domain(
 )
 
 
-# ── Forecasting (Analytics M7, ARCH §28) ─────────────────────────────
+# ── Forecasting (Analytics M7,) ─────────────────────────────
 #
 # Forecast rows are *published output*, not a recomputation surface. The
 # registry therefore exposes them at their stored grain and aggregates only
@@ -1772,7 +1772,7 @@ FORECAST_EXPLANATION = Domain(
 )
 
 
-# ── Root cause analysis (Analytics §9) ───────────────────────────────
+# ── Root cause analysis (Analytics) ───────────────────────────────
 #
 # Two relations and one shape. The slice domain is *unpivoted*: one row per
 # (slice_type, slice_value, day), so a single query answers "how did every cut

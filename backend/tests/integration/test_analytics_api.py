@@ -149,7 +149,7 @@ async def test_revenue_trend_returns_a_daily_series(api: AsyncClient) -> None:
 
 
 async def test_store_breakdown_carries_the_peer_cluster(api: AsyncClient) -> None:
-    """Ranking is only meaningful within a cluster (Analytics §3)."""
+    """Ranking is only meaningful within a cluster (Analytics)."""
     response = await api.get(
         "/api/v1/analytics/store/breakdown",
         params={"metrics": "net_revenue,aov", "dimensions": "store,store_cluster"},

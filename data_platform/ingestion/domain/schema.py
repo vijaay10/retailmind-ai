@@ -5,8 +5,8 @@ declaring columns, types, nullability, semantic class, and PII flags. That file
 is the single input to four things that would otherwise drift apart:
 
 * **parsing** — which casts to attempt and what to do when they fail;
-* **missing-value policy** — decided per column *class*, never ad hoc (§9);
-* **drift detection** — the fingerprint compared on every batch (§12);
+* **missing-value policy** — decided per column *class*, never ad hoc;
+* **drift detection** — the fingerprint compared on every batch;
 * **PII governance** — flagged columns cannot reach silver un-reviewed.
 
 Changing a schema is a reviewed pull request. That review *is* the governance.
@@ -31,7 +31,7 @@ _IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 
 
 class ColumnClass(StrEnum):
-    """Semantic role — decides the missing-value policy (ETL §9)."""
+    """Semantic role — decides the missing-value policy (ETL)."""
 
     BUSINESS_KEY = "business_key"
     """Unjoinable without it: a missing value makes the row unusable → reject."""
@@ -87,13 +87,13 @@ class ColumnSpec:
     min_value: float | None = None
     max_value: float | None = None
     normalize: str | None = None
-    """``upper`` | ``lower`` | ``title`` — case conformance (ETL §13 step 3)."""
+    """``upper`` | ``lower`` | ``title`` — case conformance (ETL step 3)."""
     date_formats: tuple[str, ...] = ()
     """Accepted input formats, tried in order. Empty means ISO-8601 only.
 
     Enumerating formats is deliberate: fuzzy date parsing silently guesses
     between ``03/04`` as March 4th and April 3rd, and a warehouse that guesses
-    is a warehouse nobody can audit (ETL §16).
+    is a warehouse nobody can audit (ETL).
     """
     currency_column: str | None = None
     """For money columns: which column carries the ISO currency code."""
@@ -124,7 +124,7 @@ class SourceSchema:
     dedupe_tiebreaker: str | None = None
     """Column whose highest value wins when the natural key repeats. Without
     one, natural-key duplicates on money-bearing rows are rejected rather than
-    resolved arbitrarily (ETL §10)."""
+    resolved arbitrarily (ETL)."""
     sentinel_nulls: tuple[str, ...] = ("", "NULL", "null", "N/A", "n/a", "-", "\\N")
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -149,7 +149,7 @@ class SourceSchema:
 
     @property
     def fingerprint(self) -> str:
-        """Stable digest of the declared shape (ETL §8.1 schema check).
+        """Stable digest of the declared shape (ETL.1 schema check).
 
         Column *order* is excluded: reordering is noise, not drift.
         """
@@ -231,7 +231,7 @@ class SourceSchema:
                 )
 
 
-# ── Drift detection (ETL §12) ────────────────────────────────────────
+# ── Drift detection (ETL) ────────────────────────────────────────
 
 
 class DriftKind(StrEnum):

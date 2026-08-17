@@ -1,4 +1,4 @@
-"""Retry policy driven by error class (ETL design §22).
+"""Retry policy driven by error class.
 
 Retries are safe here *because* every task is idempotent over its window: a
 re-run overwrites its partition rather than appending, so there is no cleanup

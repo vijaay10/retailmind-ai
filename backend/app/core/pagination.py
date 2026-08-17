@@ -1,4 +1,4 @@
-"""Pagination for analytics results (Backend design §22).
+"""Pagination for analytics results.
 
 Two mechanisms, chosen per surface rather than picked once and applied badly:
 

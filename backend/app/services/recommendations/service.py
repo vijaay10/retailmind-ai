@@ -1,4 +1,4 @@
-"""Recommendation orchestration (Analytics §10).
+"""Recommendation orchestration (Analytics).
 
 Reads the governed registry, runs the seven generators, and returns a ranked
 portfolio with honest totals.

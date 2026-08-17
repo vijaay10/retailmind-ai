@@ -1,4 +1,4 @@
-"""Enumerations stored as CHECK-constrained text (DB design §11).
+"""Enumerations stored as CHECK-constrained text (DB design).
 
 Native Postgres enums are deliberately avoided: adding a value to a text CHECK
 is a plain migration, not type surgery. Every enum here pairs with a
@@ -21,7 +21,7 @@ class Sensitivity(StrEnum):
 
 
 class Detector(StrEnum):
-    """Alert detectors (ARCH §29 ensemble)."""
+    """Alert detectors (ARCH ensemble)."""
 
     ZSCORE = "zscore"
     STL_RESID = "stl_resid"
@@ -31,7 +31,9 @@ class Detector(StrEnum):
 
 class Severity(StrEnum):
     INFO = "info"
-    WARN = "warn"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
     CRITICAL = "critical"
 
 
@@ -42,7 +44,7 @@ class AlertStatus(StrEnum):
 
 
 class NlqOutcome(StrEnum):
-    """Per-turn funnel outcome — a monitored product metric (PRD §24)."""
+    """Per-turn funnel outcome — a monitored product metric (PRD)."""
 
     ANSWERED = "answered"
     CLARIFIED = "clarified"
@@ -57,6 +59,29 @@ class RecommendationType(StrEnum):
     ASSORTMENT = "assortment"
 
 
+class RecommendationCategory(StrEnum):
+    """The seven business categories the recommendation engine proposes
+    across (`app.services.recommendations.contracts.Category`, mirrored here
+    rather than imported — `infrastructure` does not depend on `services`).
+
+    Distinct from `RecommendationType`, which is the narrower *kind of
+    action* a batch-engine-written `recommendation` row represents (reorder,
+    markdown, promo, assortment). `category` is what the calibration API's
+    "generator" filtering actually means and always meant to filter on —
+    `OutcomeRepository.find_measured()` filtered on `type` instead, which
+    can never match a category value and made generator-filtering fail for
+    every real caller (Prompt 11 finding, fixed in Prompt 11.5).
+    """
+
+    INVENTORY = "inventory"
+    PRICING = "pricing"
+    PROMOTION = "promotion"
+    STORE = "store"
+    MARKETING = "marketing"
+    CUSTOMER = "customer"
+    SUPPLIER = "supplier"
+
+
 class RecommendationStatus(StrEnum):
     PROPOSED = "proposed"
     ACCEPTED = "accepted"
@@ -65,7 +90,7 @@ class RecommendationStatus(StrEnum):
 
 
 class DismissReason(StrEnum):
-    """Enumerated dismissal reasons — the learning signal (DB §40)."""
+    """Enumerated dismissal reasons — the learning signal (DB)."""
 
     SUPPLIER_CONSTRAINT = "supplier_constraint"
     ALREADY_PLANNED = "already_planned"
@@ -74,7 +99,7 @@ class DismissReason(StrEnum):
 
 
 class Confidence(StrEnum):
-    """Deterministic-rubric confidence bands (AI design §0.1)."""
+    """Deterministic-rubric confidence bands (AI design.1)."""
 
     HIGH = "high"
     MEDIUM = "medium"
@@ -104,7 +129,7 @@ class DeliveryStatus(StrEnum):
 
 
 class InsightKind(StrEnum):
-    """Feed card taxonomy (DB §39 — the feed is the system of record)."""
+    """Feed card taxonomy (DB — the feed is the system of record)."""
 
     ALERT = "alert"
     RCA = "rca"
@@ -129,3 +154,35 @@ class DecisionAction(StrEnum):
 
     ACCEPTED = "accepted"
     DISMISSED = "dismissed"
+
+
+class OutcomeStatus(StrEnum):
+    """Lifecycle status for recommendation outcome measurement.
+
+    PENDING: decision made, measurement window not yet matured
+    MEASURING: job is actively measuring this outcome
+    MEASURED: measurement completed successfully
+    FAILED: measurement attempted but failed (e.g., query error)
+    INSUFFICIENT_DATA: not enough data to measure outcome
+    """
+
+    PENDING = "pending"
+    MEASURING = "measuring"
+    MEASURED = "measured"
+    FAILED = "failed"
+    INSUFFICIENT_DATA = "insufficient_data"
+
+
+class BaselineMethod(StrEnum):
+    """How the counterfactual baseline was calculated.
+
+    COMPARABLE_PERIOD: same period last year/month/week
+    PRE_DECISION: period immediately before decision
+    PEER_BASELINE: peer stores/SKUs without the intervention
+    FORECAST_BASELINE: what the forecast predicted
+    """
+
+    COMPARABLE_PERIOD = "comparable_period"
+    PRE_DECISION = "pre_decision"
+    PEER_BASELINE = "peer_baseline"
+    FORECAST_BASELINE = "forecast_baseline"

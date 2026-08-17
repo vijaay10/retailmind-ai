@@ -7,7 +7,7 @@ Deliberate choices, each with its reason:
   stolen hash dump is expensive to attack while login stays ~50ms.
 * **RS256** for access tokens — asymmetric signing means verifiers only ever
   hold the public key. Today one process does both; when NLQ or ML serving is
-  extracted (ARCH §32) they verify without the ability to mint.
+  extracted (ARCH) they verify without the ability to mint.
 * **Opaque random refresh tokens**, stored only as SHA-256 digests. They carry
   no claims, so a leaked database reveals nothing and a stolen token cannot be
   decoded or extended.

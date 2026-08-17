@@ -1,4 +1,4 @@
-"""Auth domain entities and policies — framework-free (Backend design §3).
+"""Auth domain entities and policies — framework-free.
 
 Nothing here imports FastAPI, SQLAlchemy, or JWT libraries: these are the
 rules, not the plumbing. That is what makes them unit-testable without a
@@ -100,7 +100,7 @@ class RefreshTokenRecord:
 
 
 class LockoutPolicy:
-    """Account lockout with exponential backoff (Backend design §8).
+    """Account lockout with exponential backoff.
 
     Counts recent failures from the ``auth_event`` ledger rather than a
     counter column: the ledger is already written for security analytics, and

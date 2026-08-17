@@ -1,4 +1,4 @@
-"""Authentication endpoints (Backend design §13 endpoint map).
+"""Authentication endpoints (Backend design endpoint map).
 
 Session model, in one paragraph: sign in with credentials to receive a
 short-lived access token (15 min, sent as ``Authorization: Bearer``) plus a

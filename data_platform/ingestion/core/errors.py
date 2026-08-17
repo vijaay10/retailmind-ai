@@ -1,4 +1,4 @@
-"""Error taxonomy (ETL design §21–22).
+"""Error taxonomy (ETL design–22).
 
 Retry behaviour is decided by *class*, never by string-matching a message.
 That distinction matters: a timeout should be retried, a parse failure never
@@ -61,7 +61,7 @@ class ParseError(EtlError):
 
 
 class SchemaDriftError(EtlError):
-    """Source broke its declared contract in a blocking way (ETL §12)."""
+    """Source broke its declared contract in a blocking way (ETL)."""
 
     error_class = ErrorClass.VALIDATION_FAILED
 

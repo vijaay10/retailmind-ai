@@ -1,0 +1,17 @@
+# Dashboard provisioning configuration.
+#
+# Dashboards in the /etc/grafana/provisioning/dashboards directory are loaded
+# automatically on Grafana startup. Changes to JSON files are picked up on save.
+
+apiVersion: 1
+
+providers:
+  - name: 'RetailMind'
+    orgId: 1
+    folder: ''
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

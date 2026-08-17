@@ -135,6 +135,108 @@ def test_token_from_another_issuer_is_rejected() -> None:
         ours.verify_access_token(token)
 
 
+# ── Multi-worker JWT key configuration (Prompt 10.5 / P0) ──────────────
+#
+# Prod runs `RM_API_WORKERS` uvicorn worker processes per container, plus
+# multiple replicas. Each process constructs its own TokenSigner
+# independently at import time (see app.api.deps), so "multi-worker" and
+# "multi-process restart" are the same scenario from the signer's point of
+# view: a second TokenSigner built from the same settings must accept what
+# the first one signed. A dev key that differs per instance would mean a
+# token from worker A gets rejected by worker B — the documented "Known
+# issue" in CLAUDE.md for the *unconfigured* dev path — while a properly
+# configured key must not have that problem at all.
+
+
+@pytest.fixture(scope="module")
+def _shared_rsa_pem() -> str:
+    """One PEM standing in for the secret every worker/replica mounts."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    return key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode()
+
+
+def test_worker_b_verifies_a_token_signed_by_worker_a(_shared_rsa_pem: str) -> None:
+    """Two independent TokenSigner instances built from the same configured
+    key behave as two uvicorn workers sharing one secret file would."""
+    worker_a = TokenSigner(AuthSettings(jwt_private_key_pem=_shared_rsa_pem))
+    worker_b = TokenSigner(AuthSettings(jwt_private_key_pem=_shared_rsa_pem))
+
+    token, _, _ = worker_a.issue_access_token(
+        subject=uuid.uuid4(), tenant_id=uuid.uuid4(), roles=["ceo"], token_version=1
+    )
+
+    payload = worker_b.verify_access_token(token)
+    assert payload["roles"] == ["ceo"]
+
+
+def test_restart_does_not_invalidate_tokens_when_key_is_configured(
+    _shared_rsa_pem: str,
+) -> None:
+    """A new process (deploy, restart, autoscale) built from the same
+    configured key must still accept tokens minted before it started."""
+    before_restart = TokenSigner(AuthSettings(jwt_private_key_pem=_shared_rsa_pem))
+    token, _, _ = before_restart.issue_access_token(
+        subject=uuid.uuid4(), tenant_id=uuid.uuid4(), roles=["analyst"], token_version=1
+    )
+
+    after_restart = TokenSigner(AuthSettings(jwt_private_key_pem=_shared_rsa_pem))
+    payload = after_restart.verify_access_token(token)
+    assert payload["roles"] == ["analyst"]
+
+
+def _clear_configured_key(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """Guarantee AuthSettings() actually resolves to "no key configured".
+
+    AuthSettings reads a repo-root ``.env`` (a real, gitignored dev file that
+    sets RM_AUTH_JWT_PRIVATE_KEY_FILE) whenever pytest is invoked from the
+    repo root — which `make test` does. Without this, these two tests pass
+    when run from backend/ but fail when run as part of the full suite,
+    because they'd pick up a real configured key instead of exercising the
+    unconfigured path they're named for.
+    """
+    monkeypatch.delenv("RM_AUTH_JWT_PRIVATE_KEY_PEM", raising=False)
+    monkeypatch.delenv("RM_AUTH_JWT_PRIVATE_KEY_FILE", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+
+def test_unconfigured_ephemeral_dev_keys_differ_per_worker(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Documents the accepted dev-only limitation (CLAUDE.md "Known issues"):
+    without a configured key, each process mints its own ephemeral pair, so
+    cross-worker verification legitimately fails. This is what makes the
+    configured-key path above load-bearing rather than redundant."""
+    _clear_configured_key(monkeypatch, tmp_path)
+    worker_a = TokenSigner(AuthSettings())
+    worker_b = TokenSigner(AuthSettings())
+
+    token, _, _ = worker_a.issue_access_token(
+        subject=uuid.uuid4(), tenant_id=uuid.uuid4(), roles=["ceo"], token_version=1
+    )
+
+    with pytest.raises(AuthenticationError):
+        worker_b.verify_access_token(token)
+
+
+def test_missing_production_key_fails_fast_instead_of_generating_one(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Outside dev, an unconfigured signing key must be a hard startup
+    failure, never a silently-generated per-process key — that would let
+    every replica mint tokens no other replica can verify."""
+    _clear_configured_key(monkeypatch, tmp_path)
+    monkeypatch.setenv("RM_APP_ENV", "prod")
+    with pytest.raises(RuntimeError, match="RM_AUTH_JWT_PRIVATE_KEY_PEM"):
+        TokenSigner(AuthSettings())
+
+
 # ── Lockout policy ───────────────────────────────────────────────────
 
 

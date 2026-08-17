@@ -49,10 +49,11 @@ def _tables() -> list[Table]:
 
 
 def test_metadata_is_nonempty_and_complete() -> None:
-    # 41 tables: the Database design set plus `recommendation_decision`, added
-    # when the console gained a way to accept a proposal. A dropped model
-    # import shows up here first.
-    assert len(_tables()) == 41, sorted(Base.metadata.tables)
+    # 42 tables: the Database design set plus `recommendation_decision` (console
+    # proposal acceptance), `recommendation_outcome` (outcome measurement),
+    # and `llm_request_log` (LLM usage tracking). A dropped model import shows
+    # up here first.
+    assert len(_tables()) == 42, sorted(Base.metadata.tables)
 
 
 @pytest.mark.parametrize("table", _tables(), ids=lambda t: t.name)
@@ -70,14 +71,14 @@ def test_every_table_has_primary_key(table: Table) -> None:
 
 @pytest.mark.parametrize("table", _tables(), ids=lambda t: t.name)
 def test_tenant_scoping_declared(table: Table) -> None:
-    """Every non-exempt table carries tenant_id (DB §12 conventions)."""
+    """Every non-exempt table carries tenant_id (DB conventions)."""
     if table.name in TENANT_EXEMPT:
         return
     assert "tenant_id" in table.columns, f"{table.name} is missing tenant_id"
 
 
 def test_partitioned_tables_include_partition_key_in_pk() -> None:
-    """Postgres requires the partition column inside the PK (DB §16)."""
+    """Postgres requires the partition column inside the PK (DB)."""
     for name, key in PARTITIONED.items():
         table = Base.metadata.tables[name]
         pk_cols = {c.name for c in table.primary_key.columns}
@@ -87,14 +88,14 @@ def test_partitioned_tables_include_partition_key_in_pk() -> None:
 
 
 def test_enum_checks_are_emitted() -> None:
-    """Spot-check that StrEnum CHECK constraints made it into the DDL (DB §11)."""
+    """Spot-check that StrEnum CHECK constraints made it into the DDL (DB)."""
     alert_ddl = str(CreateTable(Base.metadata.tables["alert"]).compile(dialect=DIALECT))
-    assert "severity IN ('info', 'warn', 'critical')" in alert_ddl
+    assert "severity IN ('info', 'low', 'medium', 'high', 'critical')" in alert_ddl
     assert "status IN ('open', 'acked', 'resolved')" in alert_ddl
 
 
 def test_constraint_naming_convention_applied() -> None:
-    """Unnamed constraints must resolve through the metadata convention (DB §25)."""
+    """Unnamed constraints must resolve through the metadata convention (DB)."""
     for table in _tables():
         for constraint in table.constraints:
             if isinstance(constraint, CheckConstraint) and constraint.name:
@@ -104,7 +105,7 @@ def test_constraint_naming_convention_applied() -> None:
 
 
 def test_rec_dedup_is_a_partial_unique_index() -> None:
-    """The 'one active rec per subject' rule is structural (DB §40)."""
+    """The 'one active rec per subject' rule is structural (DB)."""
     table = Base.metadata.tables["recommendation"]
     dedup = next(i for i in table.indexes if i.name == "uq_rec_active_dedup")
     assert dedup.unique

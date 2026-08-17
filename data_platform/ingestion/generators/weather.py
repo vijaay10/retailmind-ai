@@ -1,4 +1,4 @@
-"""Synthetic weather observations — the external covariate feed (RCA §9).
+"""Synthetic weather observations — the external covariate feed (RCA).
 
 Weather is the one dimension in this platform the retailer neither controls
 nor produces. That shapes what the feed is for: it can *explain* a footfall

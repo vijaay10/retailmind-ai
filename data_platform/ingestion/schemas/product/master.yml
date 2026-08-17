@@ -1,0 +1,74 @@
+# Product master — the descriptive dimension behind every SKU (Onboarding).
+#
+# Every other source in this platform names a product only by `sku`; none of
+# them carries what it *is*. Without this feed "category" and "brand" exist
+# only as dbt-derived guesses stitched from fact-table strings, which is no
+# foundation for a merchandising rollup. This is reference data, not an event
+# stream: one row per product, replaced wholesale on refresh rather than
+# accumulated, which is why the grain is `product_id` alone.
+#
+# Pricing is carried here only as the *current* list values a retailer may
+# supply on upload. It is not a substitute for the transactional price on a
+# sales line (`pos.sales.unit_price`), which is what actually happened.
+
+source: product
+table: master
+version: "1.0"
+
+natural_key: [product_id]
+event_time_column: updated_at
+default_timezone: UTC
+
+columns:
+  - name: product_id
+    type: string
+    class: business_key
+    normalize: upper
+
+  - name: updated_at
+    type: timestamp
+    class: event_time
+    formats:
+      - "%Y-%m-%d %H:%M:%S"
+      - "%Y-%m-%dT%H:%M:%S"
+      - "%Y-%m-%d"
+
+  # ── Dimensions — missing becomes a visible UNKNOWN member ──
+  - name: product_name
+    type: string
+    class: dimension
+
+  - name: category
+    type: string
+    class: dimension
+    normalize: title
+
+  - name: subcategory
+    type: string
+    class: dimension
+    normalize: title
+
+  - name: brand
+    type: string
+    class: dimension
+    normalize: title
+
+  # ── Measures — current list values only; never imputed ──
+  - name: unit_cost
+    type: decimal
+    class: measure
+    required: false
+    min: 0
+    max: 100000
+
+  - name: selling_price
+    type: decimal
+    class: measure
+    required: false
+    min: 0
+    max: 100000
+
+metadata:
+  owner: data-platform
+  sla: "product master refreshed on tenant-initiated upload"
+  expected_units: 1

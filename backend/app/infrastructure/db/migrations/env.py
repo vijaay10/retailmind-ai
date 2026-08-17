@@ -20,7 +20,7 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-# URL comes from settings (env vars), never from alembic.ini (DevOps §3).
+# URL comes from settings (env vars), never from alembic.ini (DevOps).
 config.set_main_option("sqlalchemy.url", DatabaseSettings().async_dsn)
 
 

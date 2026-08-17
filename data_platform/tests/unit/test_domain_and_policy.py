@@ -90,7 +90,7 @@ def test_checksum_detects_content_change(tmp_path) -> None:
     assert file_checksum(path) != original
 
 
-# ── Retry policy (ETL §22) ───────────────────────────────────────────
+# ── Retry policy (ETL) ───────────────────────────────────────────
 
 
 def test_retryable_error_is_retried_then_succeeds() -> None:
@@ -151,7 +151,7 @@ def test_error_classes_declare_their_retryability() -> None:
     assert ParseError("x").error_class is ErrorClass.PARSE_ERROR
 
 
-# ── Volume band (ETL §8) ─────────────────────────────────────────────
+# ── Volume band (ETL) ─────────────────────────────────────────────
 
 
 def test_volume_band_needs_history_before_it_judges() -> None:
@@ -178,7 +178,7 @@ def test_volume_band_widens_for_stable_sources() -> None:
     assert low < 1000 < high
 
 
-# ── Quality gate (ETL §8, §17) ───────────────────────────────────────
+# ── Quality gate (ETL,) ───────────────────────────────────────
 
 
 def _gate(schema) -> QualityGate:

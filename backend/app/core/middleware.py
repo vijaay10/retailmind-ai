@@ -1,4 +1,4 @@
-"""Middleware stack (Backend design §11). **Order is behavior** — see below.
+"""Middleware stack. **Order is behavior** — see below.
 
 Registration in FastAPI is inside-out (last added runs first), so
 ``install_middleware`` adds them in reverse of the documented order. The
@@ -7,8 +7,10 @@ documented order, outermost first:
 1. RequestID      — mint/propagate the correlation id everything else logs
 2. AccessLog      — one structured line per request, with duration and status
 3. SecurityHeaders— defence-in-depth headers on every response
-4. CORS           — allow-listed origins only
-5. Authentication — parse the bearer token, resolve the Principal
+4. RateLimit      — protect against abuse via sliding window limits
+5. Idempotency    — cache mutation responses by idempotency key
+6. CORS           — allow-listed origins only
+7. Authentication — parse the bearer token, resolve the Principal
 
 Authentication lives here *and* is re-declared as a route dependency
 (``app.api.deps``). The middleware makes identity available to logging and to
@@ -22,9 +24,12 @@ from collections.abc import Awaitable, Callable
 
 import structlog
 from fastapi import FastAPI, Request, Response
+from redis.asyncio import Redis
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 
+from app.core.idempotency import IdempotencyMiddleware
+from app.core.rate_limit import RateLimitMiddleware
 from app.core.security import TokenSigner
 from app.domain.auth.entities import Principal, PrincipalKind
 from app.domain.auth.permissions import RoleKey
@@ -51,10 +56,10 @@ _PUBLIC_PATHS = frozenset(
 class RequestIDMiddleware(BaseHTTPMiddleware):
     """Establish the correlation id for the whole request lifecycle.
 
-    Honours an inbound ``X-Request-ID`` from the edge (nginx/ALB mints one per
-    DevOps §7) so a single id spans proxy, API, worker, and warehouse query
-    tags. UUIDv7 when we mint it ourselves: time-ordered ids sort usefully in
-    log storage.
+        Honours an inbound ``X-Request-ID`` from the edge (nginx/ALB mints one per
+    ) so a single id spans proxy, API, worker, and warehouse query
+        tags. UUIDv7 when we mint it ourselves: time-ordered ids sort usefully in
+        log storage.
     """
 
     async def dispatch(self, request: Request, call_next: RequestHandler) -> Response:
@@ -93,7 +98,7 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Baseline hardening headers (Backend §40).
+    """Baseline hardening headers (Backend).
 
     The edge sets these too; duplicating them here means a misconfigured proxy
     cannot silently remove the app's protection.
@@ -172,8 +177,25 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-def install_middleware(app: FastAPI, *, signer: TokenSigner, cors_origins: list[str]) -> None:
-    """Register the stack. Added in reverse — see the module docstring."""
+def install_middleware(
+    app: FastAPI,
+    *,
+    signer: TokenSigner,
+    cors_origins: list[str],
+    redis: Redis | None = None,
+    rate_limit_enabled: bool = True,
+    idempotency_enabled: bool = True,
+) -> None:
+    """Register the stack. Added in reverse — see the module docstring.
+
+    Args:
+        app: FastAPI application
+        signer: JWT token signer for authentication
+        cors_origins: Allowed CORS origins
+        redis: Redis connection for rate limiting & idempotency (optional)
+        rate_limit_enabled: Whether to enable rate limiting (default: True)
+        idempotency_enabled: Whether to enable idempotency (default: True)
+    """
     # Starlette types add_middleware for positional-arg factories; ours takes
     # a keyword-only dependency, which the overloads do not model.
     app.add_middleware(AuthenticationMiddleware, signer=signer)  # type: ignore[arg-type]
@@ -185,7 +207,25 @@ def install_middleware(app: FastAPI, *, signer: TokenSigner, cors_origins: list[
             allow_credentials=True,  # refresh cookie must survive the round trip
             allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
             allow_headers=["Authorization", "Content-Type", "X-Request-ID", "Idempotency-Key"],
-            expose_headers=["X-Request-ID", "X-Response-Time-ms"],
+            expose_headers=["X-Request-ID", "X-Response-Time-ms", "X-Idempotency-Cached"],
+        )
+
+    # Idempotency (requires Redis, must be after auth to namespace by user)
+    if idempotency_enabled and redis is not None:
+        app.add_middleware(
+            IdempotencyMiddleware,  # type: ignore[arg-type]
+            redis=redis,
+            ttl_seconds=86400,  # 24-hour cache
+        )
+
+    # Rate limiting (requires Redis)
+    if rate_limit_enabled and redis is not None:
+        app.add_middleware(
+            RateLimitMiddleware,  # type: ignore[arg-type]
+            redis=redis,
+            per_ip_limit=100,  # 100 requests per minute per IP
+            per_user_limit=200,  # 200 requests per minute per authenticated user
+            window_seconds=60,
         )
 
     app.add_middleware(SecurityHeadersMiddleware)

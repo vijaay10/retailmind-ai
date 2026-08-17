@@ -77,6 +77,28 @@ down: ## Stop the stack (volumes preserved — never pass -v casually)
 logs: ## Tail all service logs
 	$(COMPOSE) logs -f --tail=100
 
+# ── Orchestration ─────────────────────────────────────────────────────
+
+.PHONY: dagster
+dagster: ## Start Dagster UI for pipeline orchestration
+	cd data_platform && uv run --extra dagster dagster dev -w orchestration/workspace.yaml
+
+.PHONY: dagster-test
+dagster-test: ## Run orchestration unit tests
+	cd data_platform && uv run pytest tests/unit/test_dagster_orchestration.py -v
+
+.PHONY: dagster-backfill
+dagster-backfill: ## Backfill via Dagster (requires START, END, ASSET vars)
+	@if [ -z "$(START)" ] || [ -z "$(END)" ] || [ -z "$(ASSET)" ]; then \
+		echo "Usage: make dagster-backfill START=2026-06-01 END=2026-06-30 ASSET=bronze_pos_sales"; \
+		exit 1; \
+	fi
+	cd data_platform && uv run dagster asset backfill \
+		-m orchestration.dagster \
+		--asset $(ASSET) \
+		--from $(START) \
+		--to $(END)
+
 # ── Quality ───────────────────────────────────────────────────────────
 .PHONY: lint
 lint: ## Lint + typecheck everything

@@ -2,7 +2,7 @@
 
 Every feature router mounts here; ``main`` mounts this once at ``/api/v1``.
 Keeping the prefix in one place means versioning stays a routing concern
-rather than something each module has to remember (Backend design §7).
+rather than something each module has to remember.
 """
 
 from fastapi import APIRouter
@@ -11,6 +11,7 @@ from app.api.v1 import (
     analyst,
     analytics,
     auth,
+    company,
     customers,
     dashboard,
     forecasts,
@@ -35,6 +36,7 @@ api_router.include_router(nlq.router)
 api_router.include_router(reports.router)
 api_router.include_router(notifications.router)
 api_router.include_router(analyst.router)
+api_router.include_router(company.router)
 
 # TODO(S5+):
 # dashboards, admin — mounted as each lands.

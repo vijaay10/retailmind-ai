@@ -37,6 +37,9 @@ infra/secrets/*
 # ── Data (fixtures/seeds in-repo are the ONLY data in git) ──
 *.duckdb
 *.duckdb.wal
+*.db
+*.sqlite
+*.sqlite3
 data/
 bronze/
 *.parquet
@@ -56,9 +59,19 @@ data_platform/dbt/logs/
 # any machine but the one that wrote it.
 
 # ── Airflow ───────────────────────────────────────────
-airflow.db
 airflow-webserver.pid
 data_platform/orchestration/logs/
+
+# ── Dagster (local dev instance home — run history, schedule state) ───
+# `dagster dev` writes its SQLite run/event-log/schedule state under
+# whatever DAGSTER_HOME resolves to at the time — a bare `.dagster_home/`
+# (the base_dir in orchestration/dagster.yaml) normally, but pytest/adhoc
+# runs (`tempfile.mkdtemp`) have produced `.tmp_dagster_home_*` siblings
+# that `*.db` alone doesn't fully cover (lock files, event log dirs
+# alongside the .db files). Prompt 14 found 18MB of these sitting
+# untracked-but-not-ignored — a `git add -A` would have staged them.
+.dagster_home/
+data_platform/.tmp_dagster_home*/
 
 # ── ML artifacts (MLflow/S3 own binaries, git owns code) ──
 mlruns/
@@ -89,10 +102,3 @@ ml/notebooks/**/*.ipynb_checkpoints/
 *.log
 tmp/
 .local/
-# NOT ignored: data_platform/dbt/profiles.yml
-# Ignoring a dbt profile is the right default when it holds warehouse
-# credentials. This one holds none — the path comes from
-# env_var('RM_WAREHOUSE_DUCKDB_PATH') with a relative fallback, and the rest
-# is thread count and a timezone. Ignored, it never reached a clone, so
-# `make demo`, `make warehouse` and the dbt integration tests all failed on
-# any machine but the one that wrote it.

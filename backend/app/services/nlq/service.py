@@ -1,4 +1,4 @@
-"""Natural-language query orchestration (Analytics §11, ARCH ADR-9).
+"""Natural-language query orchestration (Analytics, ARCH ADR-9).
 
 Plans a question, validates the plan against the registry, and either runs it
 through the governed compiler or routes it to the engine that can actually

@@ -33,13 +33,14 @@ COMPOSE = REPO / "infra" / "compose"
 
 #: Everything the production stack is allowed to bind on the host.
 #:
-#: The edge terminates TLS and is the front door. Grafana is bound to loopback
-#: deliberately — reachable over an SSH tunnel, never a second login page
-#: published to the internet. Anything else appearing here is a service that
-#: bypassed the proxy.
+#: The edge terminates TLS and is the front door. Grafana and Alertmanager are
+#: bound to loopback deliberately — reachable over an SSH tunnel, never a
+#: second login page published to the internet. Anything else appearing here
+#: is a service that bypassed the proxy.
 ALLOWED: dict[str, set[tuple[str, str]]] = {
     "edge": {("", "80"), ("", "443")},
     "grafana": {("127.0.0.1", "3000")},
+    "alertmanager": {("127.0.0.1", "9093")},
 }
 
 #: Placeholders for the variables the overlay requires. Interpolation has to

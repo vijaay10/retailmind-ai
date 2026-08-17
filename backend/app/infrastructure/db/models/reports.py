@@ -1,4 +1,4 @@
-"""Executive reports: schedules, runs, sections (ARCH §30; DB §39).
+"""Executive reports: schedules, runs, sections (ARCH; DB).
 
 Sections persist their assembled *data payload* separately from the narrative,
 so a report is re-narratable without re-querying — and ships tables-only when
@@ -30,14 +30,14 @@ class ReportSchedule(Base, TenantScopedMixin, TimestampMixin):
     template_key: Mapped[str] = mapped_column(comment="weekly_business_review | monthly_deep_dive")
     cron: Mapped[str] = mapped_column(comment="Tenant-local schedule")
     audience_register: Mapped[str] = mapped_column(
-        server_default=text("'executive'"), comment="Narration voice (AI §4)"
+        server_default=text("'executive'"), comment="Narration voice (AI)"
     )
     sections_config: Mapped[JSONDict] = mapped_column(server_default=text("'{}'::jsonb"))
     channels: Mapped[JSONDict] = mapped_column(
         server_default=text("'[]'::jsonb"), comment="Delivery targets"
     )
     review_gated: Mapped[bool] = mapped_column(
-        server_default=text("false"), comment="Hold for human approval before send (AI §0.3)"
+        server_default=text("false"), comment="Hold for human approval before send (AI.3)"
     )
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app_user.id", ondelete="RESTRICT"))
     enabled: Mapped[bool] = mapped_column(server_default=text("true"))
@@ -62,11 +62,11 @@ class ReportRun(Base, TenantScopedMixin):
     status: Mapped[str] = mapped_column(server_default=text("'pending'"))
     artifact_uri: Mapped[str | None] = mapped_column(comment="S3 key of rendered HTML/PDF")
     narrative_status: Mapped[str] = mapped_column(
-        server_default=text("'pending'"), comment="ok | unavailable — the T3 marker (PRD §33)"
+        server_default=text("'pending'"), comment="ok | unavailable — the T3 marker (PRD)"
     )
     data_snapshot_id: Mapped[str | None] = mapped_column(
         ForeignKey("data_snapshot.id", ondelete="RESTRICT"),
-        comment="The as-of pin every deep link carries (ARCH §30)",
+        comment="The as-of pin every deep link carries (ARCH)",
     )
     generated_at: Mapped[datetime | None]
     created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
@@ -90,10 +90,10 @@ class ReportSection(Base):
     )
     narrative: Mapped[str | None]
     grounding_result: Mapped[JSONDict | None] = mapped_column(
-        comment="Numeral-validation outcome for this section's prose (AI §0.5)"
+        comment="Numeral-validation outcome for this section's prose (AI.5)"
     )
     human_edited: Mapped[bool] = mapped_column(
-        server_default=text("false"), comment="Review-queue edits render visually distinct (AI §4)"
+        server_default=text("false"), comment="Review-queue edits render visually distinct (AI)"
     )
     prompt_version: Mapped[str | None]
     model_id: Mapped[str | None]

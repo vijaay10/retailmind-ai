@@ -1,4 +1,4 @@
-"""Natural-language query endpoints (Analytics §11).
+"""Natural-language query endpoints (Analytics).
 
 Ask a question in English; get a table, a chart, and a business explanation.
 

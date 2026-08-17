@@ -1,4 +1,4 @@
-"""Inventory intelligence service (Analytics §7, methods M7–M11).
+"""Inventory intelligence service (Analytics, methods M7–M11).
 
 Eight surfaces over the current stock position: what matters (ABC), what is
 about to run out, what is never going to sell, how old it is, how long supply

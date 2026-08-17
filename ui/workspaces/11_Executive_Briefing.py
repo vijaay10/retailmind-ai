@@ -38,7 +38,7 @@ try:
         "/api/v1/reports", period_end=end.isoformat(), period_days=days, title=title
     )
 except ApiError as error:
-    ui.failure(str(error), what="The briefing did not compose")
+    ui.workspace_error(error, what="The briefing did not compose")
     st.stop()
 
 st.markdown(f"### {report.get('title', '')}")

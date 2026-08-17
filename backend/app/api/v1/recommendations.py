@@ -1,4 +1,4 @@
-"""Recommendation endpoints (Analytics §10).
+"""Recommendation endpoints (Analytics).
 
 Turns the platform's analysis into proposed actions across seven categories:
 inventory, pricing, promotion, store, marketing, customer targeting, and
@@ -21,11 +21,11 @@ Requires `recommendations.read`.
 """
 
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.api.deps import PrincipalDep, RecommendationServiceDep
+from app.api.deps import CalibrationServiceDep, PrincipalDep, RecommendationServiceDep
 from app.schemas.recommendations import (
     DecisionLogResponse,
     DecisionRequest,
@@ -218,3 +218,109 @@ async def decision_log(
     precondition for one day being able to.
     """
     return DecisionLogResponse(**await service.decision_log(principal, limit=limit))
+
+
+# ── Calibration ──────────────────────────────────────────────────────
+
+
+@router.get(
+    "/calibration",
+    summary="Recommendation calibration summary",
+    responses={403: _FORBIDDEN},
+)
+async def calibration_summary(
+    principal: PrincipalDep,
+    calibration_service: CalibrationServiceDep,
+) -> dict[str, Any]:
+    """Overall calibration analysis across all measured recommendation outcomes.
+
+    Shows how well recommendations perform in practice vs. expectations:
+    - Overall metrics (realization ratio, direction accuracy, success rate)
+    - Generator performance (which recommendation types perform best)
+    - Confidence calibration (are high-confidence recs actually more reliable?)
+    - Systematic biases (which generators over/underestimate)
+    - Sample sizes and statistical significance flags
+
+    **This is observational data only.** The calibration engine learns from
+    outcomes but does NOT automatically change production recommendations,
+    confidence scores, or estimator logic.
+
+    Returns empty metrics with limitations when insufficient measured outcomes
+    exist (N < 20).
+    """
+    summary = await calibration_service.get_summary()
+    return summary.as_dict()
+
+
+@router.get(
+    "/calibration/generators/{generator}",
+    summary="Calibration for one generator",
+    responses={
+        403: _FORBIDDEN,
+        404: {"description": "No measured outcomes for this generator."},
+    },
+)
+async def generator_calibration(
+    generator: str,
+    principal: PrincipalDep,
+    calibration_service: CalibrationServiceDep,
+) -> dict[str, Any]:
+    """Detailed calibration metrics for one recommendation generator.
+
+    Args:
+        generator: inventory | pricing | promotion | store | customer | supplier
+
+    Returns:
+        - Overall metrics for this generator
+        - Breakdown by estimate basis (measured | modelled | assumed)
+        - Confidence band calibration
+        - Quality score (0.0-1.0)
+        - Statistical significance flags
+
+    Raises 404 if no measured outcomes exist for this generator.
+    """
+    performance = await calibration_service.get_generator_performance(generator)
+
+    if performance is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No measured outcomes found for generator: {generator}",
+        )
+
+    return performance.as_dict()
+
+
+@router.get(
+    "/calibration/confidence",
+    summary="Confidence calibration analysis",
+    responses={403: _FORBIDDEN},
+)
+async def confidence_calibration(
+    principal: PrincipalDep,
+    calibration_service: CalibrationServiceDep,
+) -> dict[str, Any]:
+    """Confidence band calibration: do confidence scores match reliability?
+
+    Answers: "Are recommendations we mark as 80-90% confident actually reliable
+    80-90% of the time?"
+
+    Returns confidence bands (0.0-0.2, 0.2-0.4, ..., 0.8-1.0) with:
+    - Expected success rate (midpoint of band)
+    - Actual success rate (observed)
+    - Calibration error (abs difference)
+    - Sample size
+    - Statistical significance flag
+
+    Well-calibrated bands have calibration_error < 0.10. Overconfident bands
+    have actual < expected by >10pp.
+    """
+    bands = await calibration_service.get_confidence_calibration()
+
+    return {
+        "confidence_bands": [band.as_dict() for band in bands],
+        "interpretation": (
+            "A well-calibrated system has calibration_error < 0.10 for all bands. "
+            "Overconfident bands show actual_success_rate significantly below expected. "
+            "All bands must have sufficient sample size (N >= 30) for statistical reliability."
+        ),
+    }

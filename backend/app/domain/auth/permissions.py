@@ -1,4 +1,4 @@
-"""Permission catalog and the role → permission matrix (Backend design §9–10).
+"""Permission catalog and the role → permission matrix (Backend design–10).
 
 Design rule that makes this file the *only* place roles are interpreted:
 **services ask for permissions, never for roles.** Nothing outside this module
@@ -18,7 +18,7 @@ Data-scope restriction (a Regional Manager seeing only their region, a Store
 Manager only their store) is **not** expressible in RBAC and is deliberately
 out of scope here: v1 enforces tenant isolation structurally (repositories) and
 module/action permissions here. Row-level entitlements are the documented ABAC
-follow-on (Backend §9 Future Improvements) and will attach to the Principal as
+follow-on (Backend Future Improvements) and will attach to the Principal as
 a scope object without changing this matrix.
 """
 

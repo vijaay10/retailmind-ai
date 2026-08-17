@@ -1,4 +1,4 @@
-"""Customer intelligence service (Analytics §2, methods M1/M2/M6/M14).
+"""Customer intelligence service (Analytics, methods M1/M2/M6/M14).
 
 Composes the customer-domain registry views into the eight questions a
 merchant actually asks: who are my segments, what are they worth, who is
@@ -30,7 +30,7 @@ from app.services.shared import authz
 
 log = structlog.get_logger(__name__)
 
-#: k-anonymity floor (Analytics §2). A group smaller than this is people, not
+#: k-anonymity floor (Analytics). A group smaller than this is people, not
 #: a population, and reporting on it invites re-identification.
 PRIVACY_FLOOR = 20
 

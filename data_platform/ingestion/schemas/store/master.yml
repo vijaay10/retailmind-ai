@@ -1,0 +1,60 @@
+# Store master — the descriptive dimension behind every store_id (Onboarding).
+#
+# Every transactional feed (`pos.sales`, `inventory.positions`, ...) names a
+# store only by `store_id`; none of them carries where it *is*. Without this
+# feed, region and city rollups exist only as whatever the retailer's fact
+# files happened to repeat on every row. This is reference data, not an event
+# stream: one row per store, replaced wholesale on refresh, which is why the
+# grain is `store_id` alone.
+
+source: store
+table: master
+version: "1.0"
+
+natural_key: [store_id]
+event_time_column: updated_at
+default_timezone: UTC
+
+columns:
+  - name: store_id
+    type: string
+    class: business_key
+    normalize: upper
+
+  - name: updated_at
+    type: timestamp
+    class: event_time
+    formats:
+      - "%Y-%m-%d %H:%M:%S"
+      - "%Y-%m-%dT%H:%M:%S"
+      - "%Y-%m-%d"
+
+  # ── Dimensions — missing becomes a visible UNKNOWN member ──
+  - name: store_name
+    type: string
+    class: dimension
+
+  - name: city
+    type: string
+    class: dimension
+    normalize: title
+
+  - name: region
+    type: string
+    class: dimension
+    normalize: title
+
+  - name: country
+    type: string
+    class: dimension
+    normalize: upper
+
+  - name: timezone
+    type: string
+    class: dimension
+    required: false
+
+metadata:
+  owner: data-platform
+  sla: "store master refreshed on tenant-initiated upload"
+  expected_units: 1

@@ -1,4 +1,4 @@
-"""Inventory intelligence endpoints (Analytics §7).
+"""Inventory intelligence endpoints (Analytics).
 
 Eight surfaces over the current stock position: ABC classification, stockout
 prediction, overstock detection, aging, lead time, supplier risk, reorder

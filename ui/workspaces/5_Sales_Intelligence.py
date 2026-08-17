@@ -57,7 +57,7 @@ try:
     )
     profit: dict[str, Any] = client.get("/api/v1/dashboard/profit", period_days=days)
 except ApiError as error:
-    ui.failure(str(error), what="The revenue domain did not respond")
+    ui.workspace_error(error, what="The revenue domain did not respond")
     st.stop()
 
 totals = summary.get("totals") or {}

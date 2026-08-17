@@ -1,4 +1,4 @@
-"""Notification delivery ledger (DB §36; PRD §32 flow)."""
+"""Notification delivery ledger (DB; PRD flow)."""
 
 import uuid
 from datetime import datetime
@@ -19,14 +19,14 @@ from app.infrastructure.db.models.enums import DeliveryStatus, NotificationChann
 class Notification(Base, TenantScopedMixin):
     __tablename__ = "notification"
     __table_args__ = (
-        # Unread-badge hot path: tiny partial index (DB §12)
+        # Unread-badge hot path: tiny partial index (DB)
         Index(
             "ix_notification_unread",
             "user_id",
             text("created_at DESC"),
             postgresql_where=text("read_at IS NULL"),
         ),
-        # Delivery-worker batch pull: pending only (DB §13 ix_notif_fanout)
+        # Delivery-worker batch pull: pending only (DB ix_notif_fanout)
         Index(
             "ix_notification_fanout",
             "tenant_id",

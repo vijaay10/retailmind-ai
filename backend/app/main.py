@@ -1,4 +1,4 @@
-"""Application factory — the single composition root (Backend design §6).
+"""Application factory — the single composition root.
 
 Everything the process needs is built here once and attached to ``app.state``:
 settings, the database engine and session factory, and the token signer.
@@ -20,6 +20,7 @@ from app.core.config import (
     AuthSettings,
     CacheSettings,
     DatabaseSettings,
+    LLMSettings,
     Settings,
     WarehouseSettings,
 )
@@ -30,7 +31,8 @@ from app.core.middleware import install_middleware
 from app.core.security import TokenSigner
 from app.infrastructure.cache.redis_cache import build_cache
 from app.infrastructure.db.session import create_engine, create_session_factory
-from app.infrastructure.semantic.client import SemanticLayerClient
+from app.infrastructure.llm.gateway import LlmGateway
+from app.infrastructure.semantic.tenancy import TenantWarehouseRegistry
 
 log = structlog.get_logger(__name__)
 
@@ -104,17 +106,40 @@ def create_app(
 
     warehouse_settings = WarehouseSettings()
     cache_settings = CacheSettings()
-    app.state.semantic_client = SemanticLayerClient(
-        warehouse_settings.duckdb_path,
-        semantic_schema=warehouse_settings.semantic_schema,
-        core_schema=warehouse_settings.core_schema,
-    )
+    llm_settings = LLMSettings()
+    # Prompt 12.5: one shared `SemanticLayerClient` used to be built here and
+    # reused for every request regardless of tenant — the root cause of the
+    # shared-warehouse gap Prompt 12 identified. `TenantWarehouseRegistry`
+    # resolves and caches one client per tenant instead; `app.api.deps`
+    # selects the right one from `principal.tenant_id` on every
+    # analytics-touching request. See
+    # `app.infrastructure.semantic.tenancy` and
+    # `docs/multi-tenancy-architecture.md`.
+    app.state.warehouse_settings = warehouse_settings
+    app.state.warehouse_registry = TenantWarehouseRegistry(warehouse_settings)
     app.state.analytics_cache = build_cache(cache_settings.cache_url, env=settings.env)
+    app.state.llm_gateway = LlmGateway.create_from_settings(llm_settings)
+
+    # Redis for rate limiting (separate connection, binary mode for sorted sets)
+    rate_limit_redis = None
+    if cache_settings.cache_url:
+        try:
+            from redis.asyncio import Redis
+
+            rate_limit_redis = Redis.from_url(
+                cache_settings.cache_url,
+                decode_responses=False,  # Binary mode for ZSET operations
+            )
+        except Exception as exc:
+            log.warning("rate_limit.redis_unavailable", error=str(exc))
 
     install_middleware(
         app,
         signer=app.state.token_signer,
         cors_origins=[settings.base_url] if settings.env != "prod" else [],
+        redis=rate_limit_redis,
+        rate_limit_enabled=settings.env in ("staging", "prod"),
+        idempotency_enabled=settings.env in ("staging", "prod"),
     )
     # Outside the authentication middleware on purpose: a scrape must not need
     # a token, and the endpoint is kept off the public edge by nginx instead.
@@ -144,7 +169,7 @@ def create_app(
     async def ready() -> dict[str, str]:
         """Ready to serve traffic: database reachable within budget.
 
-        TODO(S3): add Redis PING and an alembic-head check (Backend §34).
+        TODO(S3): add Redis PING and an alembic-head check (Backend).
         """
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))

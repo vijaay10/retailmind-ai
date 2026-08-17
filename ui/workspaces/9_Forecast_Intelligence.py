@@ -39,7 +39,7 @@ try:
     body: dict[str, Any] = client.get(f"/api/v1/forecasts/{target}", limit=200)
     accuracy: dict[str, Any] = client.get("/api/v1/forecasts/meta/accuracy")
 except ApiError as error:
-    ui.failure(str(error), what="The forecast surface did not respond")
+    ui.workspace_error(error, what="The forecast surface did not respond")
     st.stop()
 
 rows = body.get("data") or []

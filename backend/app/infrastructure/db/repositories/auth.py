@@ -1,4 +1,4 @@
-"""Auth repositories (Backend design §4).
+"""Auth repositories.
 
 Repositories own SQL and return domain-shaped results; services never see
 SQLAlchemy constructs. Each method takes the scoping it needs explicitly —
@@ -18,6 +18,52 @@ from sqlalchemy.orm import selectinload
 
 from app.domain.auth.entities import RefreshTokenRecord
 from app.infrastructure.db.models import AppUser, AuthEvent, RefreshToken
+from app.infrastructure.db.models.auth import Tenant
+
+
+class TenantRepository:
+    """Reads and writes ``tenant`` company-profile fields.
+
+    Scoped by id rather than by an ambient "current tenant" for the same
+    reason every other repository in this module is: the caller (a request
+    handler holding ``principal.tenant_id``) decides which tenant, not this
+    class.
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def get(self, tenant_id: uuid.UUID) -> Tenant | None:
+        return await self._session.get(Tenant, tenant_id)
+
+    async def update_profile(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        industry: str | None = None,
+        country_code: str | None = None,
+        timezone: str | None = None,
+        fiscal_year_start_month: int | None = None,
+    ) -> Tenant | None:
+        """Patch-style update — only fields explicitly passed are touched.
+
+        ``None`` here means "not supplied", not "clear this field": a caller
+        that wants to clear a value passes an empty string, matching how the
+        API schema treats optional PATCH fields (unset vs. explicitly null).
+        """
+        tenant = await self.get(tenant_id)
+        if tenant is None:
+            return None
+        if industry is not None:
+            tenant.industry = industry
+        if country_code is not None:
+            tenant.country_code = country_code
+        if timezone is not None:
+            tenant.timezone = timezone
+        if fiscal_year_start_month is not None:
+            tenant.fiscal_year_start_month = fiscal_year_start_month
+        await self._session.flush()
+        return tenant
 
 
 class UserRepository:
@@ -63,7 +109,7 @@ class UserRepository:
         """Invalidate every outstanding access token for this user.
 
         Called on password change, role change, and disable — the cheap global
-        logout that does not require tracking individual JWTs (Backend §8).
+        logout that does not require tracking individual JWTs (Backend).
         """
         await self._session.execute(
             update(AppUser)
@@ -73,7 +119,7 @@ class UserRepository:
 
 
 class RefreshTokenRepository:
-    """Rotation-family lifecycle for refresh tokens (Backend design §8)."""
+    """Rotation-family lifecycle for refresh tokens."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session

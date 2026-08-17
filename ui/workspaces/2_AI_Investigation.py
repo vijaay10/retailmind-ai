@@ -79,7 +79,7 @@ try:
     )
 except ApiError as error:
     progress.empty()
-    ui.failure(str(error), what="The investigation did not run")
+    ui.workspace_error(error, what="The investigation did not run")
     st.stop()
 
 progress.empty()
@@ -277,6 +277,68 @@ if linked:
             )
     if session.can("recommendations.read") and st.button("Open the decision queue"):
         session.open_workspace("Decision Center")
+
+# ── Next steps ───────────────────────────────────────────────────────
+
+ui.section(
+    "What's next",
+    "Investigation shows what happened. Forecast and recommendations show what to expect and do.",
+    accent=SEMANTIC["ai"],
+)
+
+next_actions = st.columns(2)
+
+with next_actions[0], st.container(border=True):
+    html(
+        f"""
+            <div class="rm-next">
+                <div class="rm-next-title">See the forecast</div>
+                <div class="rm-next-body">
+                    View predictions for {metric.replace("_", " ")} with confidence intervals,
+                    accuracy metrics, and backtest scores.
+                </div>
+            </div>
+            <style>
+            .rm-next {{ padding: 0.3rem 0; }}
+            .rm-next-title {{ font-weight: 620; font-size: 0.95rem; margin-bottom: 0.35rem; }}
+            .rm-next-body {{ font-size: 0.8125rem; color: var(--rm-muted); line-height: 1.5; }}
+            </style>
+            """
+    )
+    if session.can("forecasts.read") and st.button(
+        "Open Forecast workspace", key="nav_forecast", width="stretch"
+    ):
+        nav_reason = (
+            f"From investigation: {metric.replace('_', ' ')} {direction} {signed_rate(relative)}"
+        )
+        session.open_workspace(
+            "Forecast Intelligence",
+            metric=metric,
+            reason=nav_reason,
+        )
+
+with next_actions[1], st.container(border=True):
+    html(
+        """
+            <div class="rm-next">
+                <div class="rm-next-title">See recommendations</div>
+                <div class="rm-next-body">
+                    View ranked actions with expected profit, confidence, risk, and
+                    what would make them wrong.
+                </div>
+            </div>
+            """
+    )
+    if session.can("recommendations.read") and st.button(
+        "Open Decision Center", key="nav_decisions", width="stretch"
+    ):
+        nav_reason = (
+            f"From investigation: {metric.replace('_', ' ')} {direction} {signed_rate(relative)}"
+        )
+        session.open_workspace(
+            "Decision Center",
+            reason=nav_reason,
+        )
 
 ui.caveats(result.get("caveats") or [], title="How to read this investigation")
 ui.confidence_legend()

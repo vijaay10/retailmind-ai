@@ -27,7 +27,7 @@ client = session.require("analytics.revenue.read")
 
 overview: dict[str, Any] = {}
 recommendations: dict[str, Any] = {}
-errors: list[str] = []
+load_error: ApiError | None = None
 
 placeholder = st.empty()
 with placeholder.container():
@@ -36,7 +36,7 @@ with placeholder.container():
 try:
     overview = client.get("/api/v1/dashboard/executive")
 except ApiError as error:
-    errors.append(str(error))
+    load_error = error
 
 if session.can("recommendations.read"):
     try:
@@ -46,9 +46,9 @@ if session.can("recommendations.read"):
 
 placeholder.empty()
 
-if errors:
+if load_error is not None:
     ui.workspace_header("Command Center", eyebrow="Today")
-    ui.failure(errors[0], what="The day's figures did not load")
+    ui.workspace_error(load_error, what="The day's figures did not load")
     st.stop()
 
 revenue = overview.get("revenue") or {}
@@ -82,13 +82,24 @@ def _greeting() -> str:
 html(
     f"""
     <div class="rm-cc-head">
-        <div class="rm-eyebrow">{escape(session.data_date().strftime("%A · %d %B %Y"))}</div>
+        <div class="rm-eyebrow">
+            Latest business data · {escape(session.data_date().strftime("%A · %d %B %Y"))}
+        </div>
         <h1>{escape(_greeting())}, {escape(session.display_name())}</h1>
     </div>
     <style>
     .rm-cc-head h1 {{ font-size: 2.1rem; margin: 0.2rem 0 1.2rem; letter-spacing: -0.03em; }}
     </style>
     """
+)
+# The clock greeting above is about the reader; this is about the business —
+# a warehouse that lands a day behind (at best) must never look live next to
+# a "good afternoon" that is. Named explicitly rather than left as a bare
+# date, per the pipeline's real cadence (`daily_dbt_schedule`, 3am UTC).
+st.caption("Updated daily from the warehouse pipeline — not a live feed.")
+ui.data_health(
+    ["POS", "Inventory", "Purchasing", "Fulfilment", "Weather", "Forecast"],
+    as_of=session.data_date().strftime("%d %b %Y"),
 )
 
 lede, side = st.columns([2.1, 1])
@@ -208,13 +219,15 @@ else:
 
 if actions:
     top = actions[0]
+    net_opportunity = recommendations.get("net_profit_opportunity") or 0
     ui.section(
-        "Most valuable action available",
-        "One, not a list. The rest are in the Decision Center.",
+        "Top opportunity",
+        f"Highest-value action from {len(actions)} opportunities worth "
+        f"{number(net_opportunity, 'currency')} net. Full queue in Decision Center.",
         accent=SEMANTIC["accent"],
     )
     ui.action_card(top, index=0, can_act=False, on_decide=None)
-    if st.button("Open the decision queue", width="content"):
+    if st.button("View all opportunities", width="content", type="primary"):
         session.open_workspace("Decision Center")
 
 # ── Context, last ────────────────────────────────────────────────────

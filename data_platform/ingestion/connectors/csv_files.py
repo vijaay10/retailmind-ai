@@ -1,4 +1,4 @@
-"""CSV file connector — the upload/drop path (ETL design §3).
+"""CSV file connector — the upload/drop path.
 
 Handles the messy realities of file-based retail feeds: per-store files that
 arrive at different times, occasional re-drops, gzip, and headers that drift.
@@ -98,7 +98,7 @@ class CsvFileConnector:
             )
 
         # Skip work entirely when this exact content is already committed —
-        # the file-level duplicate check (ETL §7).
+        # the file-level duplicate check (ETL).
         committed = PartitionManifest.read(
             self.settings.bronze_dir(self.schema.source, self.schema.table, partition)
         )
@@ -139,6 +139,6 @@ class CsvFileConnector:
         )
 
     def _observed_columns(self, relation: str) -> list[str]:
-        """Read the header without reading the data (drift input, ETL §12)."""
+        """Read the header without reading the data (drift input,)."""
         rows = self.connection.execute(f"SELECT * FROM {relation} LIMIT 0").description or []
         return [str(column[0]) for column in rows]

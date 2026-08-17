@@ -1,4 +1,4 @@
-"""Read repositories for alerts and recommendations (Backend design §4).
+"""Read repositories for alerts and recommendations.
 
 Both are OLTP reads scoped to the caller's tenant. They are deliberately
 read-only here: the alert and recommendation *lifecycles* (acknowledge,
@@ -142,7 +142,7 @@ class AlertReadRepository:
         ]
 
         # Sorted in Python rather than SQL: severity is stored as text for
-        # migration friendliness (DB §11), so ordering needs the rank map above.
+        # migration friendliness (DB), so ordering needs the rank map above.
         summaries.sort(
             key=lambda a: (_SEVERITY_RANK.get(a.severity, 9), -a.detected_at.timestamp())
         )

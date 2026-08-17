@@ -57,7 +57,7 @@ try:
         "/api/v1/recommendations", categories=chosen or None, limit=limit
     )
 except ApiError as error:
-    ui.failure(str(error), what="The recommendation engine did not respond")
+    ui.workspace_error(error, what="The recommendation engine did not respond")
     st.stop()
 
 items: list[dict[str, Any]] = body.get("recommendations") or []
@@ -183,7 +183,7 @@ ui.section("Decision log", "What this team has decided, newest first.")
 try:
     log = client.get("/api/v1/recommendations/decisions", limit=25)
 except ApiError as error:
-    ui.failure(str(error), what="The decision log did not load")
+    ui.workspace_error(error, what="The decision log did not load")
     log = {}
 
 entries = log.get("decisions") or []
@@ -254,4 +254,110 @@ else:
         "Amounts are what each action was expected to be worth **when it was decided**, "
         "not what it earned. Nothing in this platform measures the outcome yet — "
         "recording the expectation is what makes that measurable later."
+    )
+
+# ── Recommendation Learning ──────────────────────────────────────────
+
+ui.section(
+    "Recommendation Learning",
+    "How reliable are our recommendations in practice? Based on measured outcomes.",
+    accent=SEMANTIC["ai"],
+)
+
+try:
+    calibration_data = client.get("/api/v1/recommendations/calibration")
+except ApiError:
+    ui.empty(
+        "Calibration data is not available yet. Measurements will appear here after "
+        "recommendations are accepted and their outcomes measured.",
+        what="No calibration data",
+        icon="📊",
+    )
+    st.stop()
+
+measured_count = calibration_data.get("total_measured_outcomes", 0)
+overall = calibration_data.get("overall_metrics", {})
+limitations = calibration_data.get("limitations", [])
+
+if measured_count == 0:
+    ui.empty(
+        "No measured outcomes yet. Calibration metrics will appear after decisions "
+        "are measured (H+1, H+7, H+14, H+30 days).",
+        what="Awaiting measurements",
+        icon="⏱",
+    )
+else:
+    is_significant = overall.get("is_statistically_significant", False)
+
+    # Build stats
+    stats = [
+        {
+            "label": "Measured outcomes",
+            "value": str(measured_count),
+            "note": "with outcomes measured" if is_significant else "insufficient for reliability",
+            "accent": SEMANTIC["positive"] if is_significant else SEMANTIC["muted"],
+        }
+    ]
+
+    if is_significant:
+        # Direction accuracy
+        direction_acc = overall.get("direction_accuracy")
+        if direction_acc is not None:
+            stats.append(
+                {
+                    "label": "Direction accuracy",
+                    "value": f"{direction_acc * 100:.0f}%",
+                    "note": "moved in expected direction",
+                    "accent": SEMANTIC["positive"] if direction_acc > 0.75 else SEMANTIC["capital"],
+                }
+            )
+
+        # Mean realization
+        mean_real = overall.get("mean_realization_ratio")
+        if mean_real is not None:
+            stats.append(
+                {
+                    "label": "Mean realization",
+                    "value": f"{mean_real * 100:.0f}%",
+                    "note": "of expected impact realized",
+                    "accent": (
+                        SEMANTIC["positive"] if 0.85 <= mean_real <= 1.15 else SEMANTIC["capital"]
+                    ),
+                }
+            )
+
+        # Success rate
+        success_rate = overall.get("success_rate")
+        if success_rate is not None:
+            stats.append(
+                {
+                    "label": "Success rate",
+                    "value": f"{success_rate * 100:.0f}%",
+                    "note": "achieved ≥70% of expected",
+                    "accent": SEMANTIC["positive"] if success_rate > 0.70 else SEMANTIC["capital"],
+                }
+            )
+
+    ui.stat_row(stats)
+
+    # Best performing generators
+    best_performing = calibration_data.get("best_performing_generators", [])
+    if best_performing and is_significant:
+        st.caption(f"**Best performing**: {', '.join(best_performing)}")
+
+    # Needs calibration warnings
+    needs_calibration = calibration_data.get("needs_calibration", [])
+    if needs_calibration and is_significant:
+        st.warning(f"⚠️ Systematic bias detected: {', '.join(needs_calibration)}")
+
+    # Limitations
+    if limitations:
+        with st.expander("Known limitations"):
+            for limitation in limitations:
+                st.caption(f"• {limitation}")
+
+    # Note about observational nature
+    st.caption(
+        "These metrics are **observational only**. The system learns from outcomes but "
+        "does not automatically change recommendations, confidence scores, or estimator logic."
     )

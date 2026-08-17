@@ -1,4 +1,4 @@
-"""Connector protocol (ETL design §32).
+"""Connector protocol.
 
 Every connector implements the same four-step contract, and the framework owns
 everything else — retries, checkpoints, manifests, metrics, reject routing.

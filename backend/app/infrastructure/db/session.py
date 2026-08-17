@@ -1,9 +1,9 @@
 """Async engine and session factories.
 
-One engine per process (DI container singleton, Backend §6); sessions are
+One engine per process (DI container singleton,); sessions are
 request-scoped and enlisted in the Unit of Work. ``raiseload("*")`` is applied
 at query time by repositories — relationship loading is always explicit
-(Backend §17: no lazy loading in async API code).
+(Backend: no lazy loading in async API code).
 """
 
 from collections.abc import AsyncIterator

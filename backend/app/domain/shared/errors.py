@@ -1,4 +1,4 @@
-"""Domain error hierarchy (Backend design §12).
+"""Domain error hierarchy.
 
 Services raise these; the API layer maps them to RFC 7807 responses in
 ``app.core.errors``. Routers never construct HTTP errors themselves — that
@@ -32,7 +32,7 @@ class AuthenticationError(AppError):
 
 
 class InvalidCredentialsError(AuthenticationError):
-    """Deliberately indistinguishable from 'unknown account' (Backend §40).
+    """Deliberately indistinguishable from 'unknown account' (Backend).
 
     Login must not reveal whether an email exists, so both paths raise this.
     """
@@ -41,7 +41,7 @@ class InvalidCredentialsError(AuthenticationError):
 
 
 class AccountLockedError(AuthenticationError):
-    """Too many failed attempts; locked with exponential backoff (Backend §8)."""
+    """Too many failed attempts; locked with exponential backoff (Backend)."""
 
     public_message = "Account temporarily locked after repeated failed sign-in attempts."
     hint = "Wait for the lockout to expire, or ask an admin to reset your password."
@@ -76,7 +76,7 @@ class NotFoundError(AppError):
     """Missing — or out of tenant scope.
 
     Cross-tenant reads raise this, never AuthorizationError: confirming that a
-    resource exists elsewhere is itself a leak (Backend §14 policy).
+    resource exists elsewhere is itself a leak (Backend policy).
     """
 
     public_message = "Resource not found."

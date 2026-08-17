@@ -1,7 +1,7 @@
 """Migration + seed round-trip against a real Postgres 16 (testcontainers).
 
 Proves what dialect-compile tests cannot: extensions, the UUIDv7 function,
-partitioned-table DDL, triggers, views/MVs, and both seeds — the DB §30 doctrine
+partitioned-table DDL, triggers, views/MVs, and both seeds — the DB doctrine
 that an untested migration is a hope.
 
 Marked ``integration``: requires Docker; excluded from the default `make test`.
@@ -77,8 +77,13 @@ def test_all_tables_created(pg_env: dict[str, str]) -> None:
         "SELECT count(*) FROM information_schema.tables "
         "WHERE table_schema='public' AND table_type='BASE TABLE'",
     )
-    # 41 model tables + alembic_version + 2 default partitions
-    assert '"44"' in count
+    # 42 model tables (see backend/tests/unit/test_db_schema.py for why it's
+    # 42, not 41 — recommendation_decision, recommendation_outcome, and
+    # llm_request_log were added after this count was first written) +
+    # alembic_version + 2 default partitions (audit_event_default,
+    # llm_usage_default). Verified against a real disposable Postgres during
+    # Prompt 10.5: 45 rows, exact table list checked by hand.
+    assert '"45"' in count
 
 
 def test_uuid_v7_function_is_versioned_and_time_ordered(pg_env: dict[str, str]) -> None:
@@ -135,7 +140,7 @@ def test_seeds_run_and_demo_story_is_queryable(pg_env: dict[str, str]) -> None:
     )
     assert "net_revenue" in inbox and "critical" in inbox
 
-    # MVs refresh concurrently thanks to their unique indexes (DB §14).
+    # MVs refresh concurrently thanks to their unique indexes (DB).
     _psql(pg_env, "REFRESH MATERIALIZED VIEW mv_alert_quality")
     quality = _psql(pg_env, "SELECT alerts_total, alerts_acked FROM mv_alert_quality")
     assert '"1", "1"' in quality
@@ -150,7 +155,7 @@ def test_updated_at_trigger_fires(pg_env: dict[str, str]) -> None:
 
 
 def test_downgrade_round_trip(pg_env: dict[str, str]) -> None:
-    """upgrade → downgrade → upgrade must be clean (Backend §37 migration test)."""
+    """upgrade → downgrade → upgrade must be clean (Backend migration test)."""
     for target in ("base", "head"):
         subprocess.run(  # noqa: S603
             ["uv", "run", "alembic", "downgrade" if target == "base" else "upgrade", target],  # noqa: S607

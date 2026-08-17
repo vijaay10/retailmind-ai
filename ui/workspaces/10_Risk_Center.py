@@ -91,7 +91,7 @@ if sweep_now:
 try:
     inbox: dict[str, Any] = client.get("/api/v1/notifications", unread_only=unread_only, limit=50)
 except ApiError as error:
-    ui.failure(str(error), what="The inbox did not load")
+    ui.workspace_error(error, what="The inbox did not load")
     st.stop()
 
 items = inbox.get("notifications") or []

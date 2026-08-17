@@ -8,23 +8,23 @@ GENESIS PATTERN — read before touching:
     That is deliberate and applies to this revision only: models and DDL have a
     single source at birth, and ``alembic check`` in CI fails the build the
     moment models drift from migrations. Every subsequent revision is
-    handwritten (expand → migrate → contract, DB design §27). Do not edit this
+    handwritten (expand → migrate → contract, DB design). Do not edit this
     file after the v0.2 tag — schema changes go in new revisions.
 
 Beyond the metadata, this revision owns the pure-SQL surface area:
     * extensions: citext (case-insensitive email), btree_gist (mute exclusion),
       pgcrypto (gen_random_uuid on PG < 13 compat paths);
-    * ``uuid_generate_v7()`` — DB-side time-ordered UUIDs (DB §9);
+    * ``uuid_generate_v7()`` — DB-side time-ordered UUIDs (DB);
     * DEFAULT partitions for the monthly-partitioned tables (llm_usage,
       audit_event); the maintenance job creates monthly partitions ahead and
-      will detach the default (DB §16);
+      will detach the default (DB);
     * ``set_updated_at()`` trigger on every table with an ``updated_at`` column
       — raw-SQL updates cannot forget it;
     * append-only grants on audit tables (INSERT-only for app roles) — applied
       only where the roles exist, so dev single-role setups still migrate;
     * plain views (v_alert_inbox, v_pipeline_health) and materialized views
       (mv_llm_spend_month, mv_alert_quality, mv_pipeline_sla) with the unique
-      indexes REFRESH CONCURRENTLY requires (DB §14).
+      indexes REFRESH CONCURRENTLY requires (DB).
 """
 
 from collections.abc import Sequence
@@ -92,7 +92,7 @@ END $$;
 """
 
 APPEND_ONLY_GRANTS = """
--- Audit is append-only BY GRANTS, not convention (DB §35). Applied only where
+-- Audit is append-only BY GRANTS, not convention (DB). Applied only where
 -- the production role split exists; dev single-role databases skip silently.
 DO $$
 BEGIN
@@ -154,7 +154,7 @@ ORDER BY cc.id, pr.started_at DESC NULLS LAST
 
 MV_LLM_SPEND_MONTH = """
 -- Monthly LLM spend rollup: budget checks read this, never the raw ledger
--- (DB §14 mv_llm_spend_month). Refreshed CONCURRENTLY on schedule.
+-- (DB mv_llm_spend_month). Refreshed CONCURRENTLY on schedule.
 CREATE MATERIALIZED VIEW mv_llm_spend_month AS
 SELECT
     tenant_id,
@@ -170,7 +170,7 @@ GROUP BY tenant_id, date_trunc('month', at), module
 
 MV_ALERT_QUALITY = """
 -- Alert quality per rule/week: ack ÷ (ack + mute-proxy) feeds sensitivity
--- retuning (DB §14 mv_alert_quality; ARCH §29 fatigue loop).
+-- retuning (DB mv_alert_quality; fatigue loop).
 CREATE MATERIALIZED VIEW mv_alert_quality AS
 SELECT
     a.tenant_id,
@@ -186,7 +186,7 @@ GROUP BY a.tenant_id, a.rule_id, date_trunc('week', a.detected_at)
 """
 
 MV_PIPELINE_SLA = """
--- Pipeline SLA attainment per connector/day (DB §14 mv_pipeline_sla).
+-- Pipeline SLA attainment per connector/day (DB mv_pipeline_sla).
 CREATE MATERIALIZED VIEW mv_pipeline_sla AS
 SELECT
     pr.tenant_id,
@@ -200,7 +200,7 @@ FROM pipeline_run pr
 GROUP BY pr.tenant_id, pr.connector_id, date_trunc('day', pr.started_at)
 """
 
-# Unique indexes are what make REFRESH CONCURRENTLY possible (DB §14).
+# Unique indexes are what make REFRESH CONCURRENTLY possible (DB).
 MV_UNIQUE_INDEXES = [
     "CREATE UNIQUE INDEX uq_mv_llm_spend_month ON mv_llm_spend_month (tenant_id, month, module)",
     "CREATE UNIQUE INDEX uq_mv_alert_quality ON mv_alert_quality (tenant_id, rule_id, week)",
@@ -221,7 +221,7 @@ def upgrade() -> None:
     Base.metadata.create_all(bind)
 
     # 3 — DEFAULT partitions so the partitioned tables accept writes immediately;
-    #     the maintenance job pre-creates monthly partitions ahead (DB §16)
+    #     the maintenance job pre-creates monthly partitions ahead (DB)
     op.execute("CREATE TABLE llm_usage_default PARTITION OF llm_usage DEFAULT")
     op.execute("CREATE TABLE audit_event_default PARTITION OF audit_event DEFAULT")
 

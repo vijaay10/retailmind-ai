@@ -50,6 +50,7 @@ from retailmind_ui.components.primitives import (
     analyst_grid,
     bar_column,
     chip,
+    data_health,
     divider,
     empty,
     failure,
@@ -64,6 +65,7 @@ from retailmind_ui.components.primitives import (
     stat_row,
     table,
     working,
+    workspace_error,
     workspace_header,
 )
 
@@ -81,6 +83,7 @@ __all__ = [
     "confidence_legend",
     "confidence_meter",
     "coverage",
+    "data_health",
     "decision_tree",
     "disqualifier",
     "divider",
@@ -108,5 +111,6 @@ __all__ = [
     "timeline",
     "window_comparison",
     "working",
+    "workspace_error",
     "workspace_header",
 ]

@@ -393,3 +393,505 @@ def recommendation_ready(payload: dict[str, Any], *, as_of: date) -> list[AlertC
 def _evidence(candidate: AlertCandidate, key: str) -> float:
     value = candidate.evidence.get(key)
     return float(value) if isinstance(value, int | float) else 0.0
+
+
+# ── 7. Rolling baseline anomaly ──────────────────────────────────────
+
+
+#: Rolling window for baseline (days of history to average)
+ROLLING_WINDOW_DAYS = 28
+
+#: Minimum deviation from rolling baseline to trigger alert
+ROLLING_BASELINE_DEVIATION_MEDIUM = 0.15  # 15%
+ROLLING_BASELINE_DEVIATION_HIGH = 0.25  # 25%
+ROLLING_BASELINE_DEVIATION_CRITICAL = 0.40  # 40%
+
+
+def rolling_baseline_anomaly(
+    metric: str,
+    current_value: float,
+    historical_values: list[float],
+    *,
+    as_of: date,
+    entity: str = "network",
+    min_history: int = 14,
+) -> list[AlertCandidate]:
+    """Detect anomalies against rolling historical baseline.
+
+    Compares current value vs rolling average of historical values. Uses simple
+    moving average rather than sophisticated forecasting - defensibly simple.
+
+    Args:
+        metric: Metric name (e.g., "net_revenue")
+        current_value: Today's observed value
+        historical_values: Prior N days of values (most recent first)
+        as_of: Detection date
+        entity: What this alert is about (store, region, network)
+        min_history: Minimum historical points required
+
+    Returns:
+        List of alert candidates (0 or 1)
+    """
+    if len(historical_values) < min_history:
+        return []
+
+    baseline = sum(historical_values) / len(historical_values)
+    if baseline <= 0:
+        return []
+
+    deviation = (current_value - baseline) / baseline
+    abs_deviation = abs(deviation)
+
+    if abs_deviation < ROLLING_BASELINE_DEVIATION_MEDIUM:
+        return []
+
+    # Severity based on magnitude
+    if abs_deviation >= ROLLING_BASELINE_DEVIATION_CRITICAL:
+        severity = Severity.CRITICAL
+    elif abs_deviation >= ROLLING_BASELINE_DEVIATION_HIGH:
+        severity = Severity.HIGH
+    else:
+        severity = Severity.MEDIUM
+
+    direction = "above" if deviation > 0 else "below"
+    return [
+        AlertCandidate(
+            kind=AlertKind.SALES_DROP if deviation < 0 else AlertKind.RECOMMENDATION_READY,
+            subject=entity,
+            title=f"{metric} is {abs_deviation:.1%} {direction} rolling baseline",
+            body=(
+                f"Current value is {current_value:,.0f} against a {len(historical_values)}-day "
+                f"rolling average of {baseline:,.0f} ({deviation:+.1%}). "
+                f"This represents a {'decline' if deviation < 0 else 'surge'} "
+                f"outside normal variation."
+            ),
+            severity=severity,
+            observed=current_value,
+            expected_low=baseline * (1 - ROLLING_BASELINE_DEVIATION_MEDIUM),
+            expected_high=baseline * (1 + ROLLING_BASELINE_DEVIATION_MEDIUM),
+            detected_for=as_of,
+            evidence={
+                "method": "rolling_baseline",
+                "current": round(current_value, 2),
+                "baseline": round(baseline, 2),
+                "deviation": round(deviation, 4),
+                "window_days": len(historical_values),
+            },
+            deep_link=f"/analytics/trends?metric={metric}",
+        )
+    ]
+
+
+# ── 8. Forecast residual anomaly ─────────────────────────────────────
+
+
+#: Minimum forecast error to trigger alert (as % of forecast)
+FORECAST_ERROR_MEDIUM = 0.20  # 20%
+FORECAST_ERROR_HIGH = 0.35  # 35%
+FORECAST_ERROR_CRITICAL = 0.50  # 50%
+
+
+def forecast_residual_anomaly(
+    metric: str,
+    actual: float,
+    forecast: float,
+    forecast_lower: float | None,
+    forecast_upper: float | None,
+    *,
+    as_of: date,
+    entity: str = "network",
+    confidence_level: float = 0.80,
+) -> list[AlertCandidate]:
+    """Detect when actual significantly deviates from forecast.
+
+    Compares actual vs forecast, considering prediction intervals if available.
+    A forecast miss is a business fact worth investigating - it means plans
+    built on that forecast are now wrong.
+
+    Args:
+        metric: Metric name
+        actual: Realized value
+        forecast: Point forecast
+        forecast_lower: Lower prediction bound (optional)
+        forecast_upper: Upper prediction bound (optional)
+        as_of: Detection date
+        entity: What this alert is about
+        confidence_level: Forecast confidence level (for reporting)
+
+    Returns:
+        List of alert candidates (0 or 1)
+    """
+    if forecast <= 0:
+        return []
+
+    # Check if actual is outside prediction interval
+    outside_interval = (forecast_lower is not None and actual < forecast_lower) or (
+        forecast_upper is not None and actual > forecast_upper
+    )
+
+    # Calculate percentage error
+    error = (actual - forecast) / forecast
+    abs_error = abs(error)
+
+    # Only alert if error is material or outside interval
+    if abs_error < FORECAST_ERROR_MEDIUM and not outside_interval:
+        return []
+
+    # Severity based on magnitude
+    is_critical = abs_error >= FORECAST_ERROR_CRITICAL or (
+        outside_interval and abs_error >= FORECAST_ERROR_HIGH
+    )
+    if is_critical:
+        severity = Severity.CRITICAL
+    elif abs_error >= FORECAST_ERROR_HIGH or outside_interval:
+        severity = Severity.HIGH
+    else:
+        severity = Severity.MEDIUM
+
+    interval_note = ""
+    if outside_interval:
+        interval_note = f" This is outside the {confidence_level:.0%} prediction interval."
+
+    direction = "above" if error > 0 else "below"
+    return [
+        AlertCandidate(
+            kind=AlertKind.FORECAST_RISK,
+            subject=entity,
+            title=f"{metric} actual is {abs_error:.1%} {direction} forecast",
+            body=(
+                f"Actual value is {actual:,.0f} against a forecast of {forecast:,.0f} "
+                f"({error:+.1%}).{interval_note} Plans built on this forecast may need revision."
+            ),
+            severity=severity,
+            observed=actual,
+            expected_low=forecast_lower if forecast_lower else forecast * 0.8,
+            expected_high=forecast_upper if forecast_upper else forecast * 1.2,
+            detected_for=as_of,
+            evidence={
+                "method": "forecast_residual",
+                "actual": round(actual, 2),
+                "forecast": round(forecast, 2),
+                "error_pct": round(error, 4),
+                "forecast_lower": round(forecast_lower, 2) if forecast_lower else None,
+                "forecast_upper": round(forecast_upper, 2) if forecast_upper else None,
+                "outside_interval": outside_interval,
+            },
+            deep_link=f"/forecasts/accuracy?metric={metric}",
+        )
+    ]
+
+
+# ── 9. Control limits (Statistical Process Control) ─────────────────
+
+
+#: Standard deviations for control limits
+CONTROL_LIMIT_SIGMA = 3.0  # 3-sigma = 99.7% of normal variation
+
+
+def control_limits_anomaly(
+    metric: str,
+    current_value: float,
+    historical_values: list[float],
+    *,
+    as_of: date,
+    entity: str = "network",
+    min_history: int = 20,
+) -> list[AlertCandidate]:
+    """Detect out-of-control conditions using statistical process control.
+
+    Uses mean ± 3σ control limits. A process is "in control" when values fall
+    within limits; outside signals a special cause worth investigating.
+
+    Args:
+        metric: Metric name
+        current_value: Current observed value
+        historical_values: Historical baseline period
+        as_of: Detection date
+        entity: What this alert is about
+        min_history: Minimum points for stable statistics
+
+    Returns:
+        List of alert candidates (0 or 1)
+    """
+    if len(historical_values) < min_history:
+        return []
+
+    # Calculate mean and standard deviation
+    mean = sum(historical_values) / len(historical_values)
+    variance = sum((x - mean) ** 2 for x in historical_values) / (len(historical_values) - 1)
+    std_dev = variance**0.5
+
+    if std_dev <= 0:
+        return []
+
+    # Control limits: mean ± 3σ
+    ucl = mean + (CONTROL_LIMIT_SIGMA * std_dev)  # Upper control limit
+    lcl = mean - (CONTROL_LIMIT_SIGMA * std_dev)  # Lower control limit
+
+    # Check if current value is outside control limits
+    if lcl <= current_value <= ucl:
+        return []  # In control
+
+    # Calculate how many sigma out
+    sigma_distance = abs(current_value - mean) / std_dev
+
+    # Severity based on sigma distance
+    if sigma_distance >= 4.0:
+        severity = Severity.CRITICAL  # 4+ sigma is extremely rare
+    elif sigma_distance >= 3.5:
+        severity = Severity.HIGH
+    else:
+        severity = Severity.MEDIUM  # 3-3.5 sigma
+
+    direction = "above" if current_value > ucl else "below"
+    limit_breached = ucl if current_value > ucl else lcl
+
+    return [
+        AlertCandidate(
+            kind=AlertKind.SALES_DROP if current_value < lcl else AlertKind.RECOMMENDATION_READY,
+            subject=entity,
+            title=f"{metric} outside control limits ({sigma_distance:.1f}σ {direction} mean)",
+            body=(
+                f"Current value is {current_value:,.0f}, which is {direction} the "
+                f"{CONTROL_LIMIT_SIGMA}σ control limit of {limit_breached:,.0f}. "
+                f"Process mean is {mean:,.0f} ± {std_dev:,.0f}. This signals a special "
+                "cause requiring investigation."
+            ),
+            severity=severity,
+            observed=current_value,
+            expected_low=lcl,
+            expected_high=ucl,
+            detected_for=as_of,
+            evidence={
+                "current": round(current_value, 2),
+                "mean": round(mean, 2),
+                "std_dev": round(std_dev, 2),
+                "lcl": round(lcl, 2),
+                "ucl": round(ucl, 2),
+                "sigma_distance": round(sigma_distance, 2),
+                "baseline_points": len(historical_values),
+            },
+            deep_link=f"/analytics/control-chart?metric={metric}",
+        )
+    ]
+
+
+def seasonal_baseline_anomaly(
+    metric: str,
+    current_value: float,
+    seasonal_comparison_value: float,
+    *,
+    as_of: date,
+    entity: str = "network",
+    period_label: str = "same period last year",
+    min_baseline: float = 100.0,
+) -> list[AlertCandidate]:
+    """Detect anomalies against seasonal baseline (e.g., year-over-year).
+
+    Compares current value to the same period in a prior seasonal cycle.
+    Most useful for metrics with strong seasonal patterns (retail sales,
+    holiday demand, etc.). Uses percentage deviation with minimum absolute
+    threshold to avoid false positives on small numbers.
+
+    Thresholds (percentage deviation):
+    - MEDIUM: 20% deviation
+    - HIGH: 35% deviation
+    - CRITICAL: 50% deviation
+
+    Args:
+        metric: Metric being monitored (e.g., "revenue", "units_sold")
+        current_value: Current period value
+        seasonal_comparison_value: Value from comparable prior period
+        as_of: Date of detection
+        entity: What's being monitored (store, SKU, region, "network")
+        period_label: Human-readable period description (e.g., "Q4 2023")
+        min_baseline: Minimum baseline value to consider significant
+
+    Returns:
+        List with 0-1 AlertCandidate. Empty if deviation below threshold
+        or baseline too small to be meaningful.
+
+    Example:
+        >>> seasonal_baseline_anomaly(
+        ...     "revenue", 85000.0, 100000.0, as_of=date(2024, 12, 15),
+        ...     period_label="Q4 2023"
+        ... )
+        [AlertCandidate(kind=SALES_DROP, severity=MEDIUM, ...)]
+    """
+    # Avoid division by zero and false positives on tiny numbers
+    if seasonal_comparison_value == 0 or abs(seasonal_comparison_value) < min_baseline:
+        return []
+
+    deviation_pct = abs((current_value - seasonal_comparison_value) / seasonal_comparison_value)
+
+    # Determine severity based on magnitude
+    if deviation_pct < 0.20:
+        return []  # Below significance threshold
+    elif deviation_pct < 0.35:
+        severity = Severity.MEDIUM
+    elif deviation_pct < 0.50:
+        severity = Severity.HIGH
+    else:
+        severity = Severity.CRITICAL
+
+    # Determine direction (drop vs spike)
+    direction = "down" if current_value < seasonal_comparison_value else "up"
+    kind = AlertKind.SALES_DROP if direction == "down" else AlertKind.INVENTORY_RISK
+
+    metric_name = metric.replace("_", " ").title()
+    if direction == "down":
+        impact_desc = "This represents a significant decline from seasonal norms."
+    else:
+        impact_desc = "This represents unusual growth vs seasonal norms."
+
+    return [
+        AlertCandidate(
+            kind=kind,
+            subject=entity,
+            title=f"{metric_name} {direction} {deviation_pct:.0%} vs {period_label}",
+            body=(
+                f"{metric_name} is {current_value:,.0f}, "
+                f"{direction} {deviation_pct:.0%} from {seasonal_comparison_value:,.0f} "
+                f"in {period_label}. {impact_desc}"
+            ),
+            severity=severity,
+            observed=current_value,
+            expected_low=seasonal_comparison_value * 0.80 if direction == "down" else None,
+            expected_high=seasonal_comparison_value * 1.20 if direction == "up" else None,
+            detected_for=as_of,
+            evidence={
+                "method": "seasonal_baseline",
+                "current": current_value,
+                "baseline": seasonal_comparison_value,
+                "baseline_period": period_label,
+                "deviation_pct": round(deviation_pct, 4),
+                "direction": direction,
+            },
+            deep_link=f"/analytics/seasonal-comparison?metric={metric}&entity={entity}",
+        )
+    ]
+
+
+def rate_of_change_anomaly(
+    metric: str,
+    recent_values: list[float],
+    *,
+    as_of: date,
+    entity: str = "network",
+    min_periods: int = 5,
+    acceleration_threshold: float = 0.30,
+) -> list[AlertCandidate]:
+    """Detect rapid acceleration or deceleration in metric trends.
+
+    Measures the rate of change between consecutive periods to identify
+    sudden momentum shifts. Uses simple linear regression slope comparison:
+    recent slope vs longer-term slope. Alerts when acceleration/deceleration
+    exceeds threshold.
+
+    Useful for detecting:
+    - Revenue declines that are accelerating
+    - Inventory buildups that are speeding up
+    - Sudden reversals in trends
+
+    Thresholds (slope change):
+    - MEDIUM: 30% acceleration/deceleration
+    - HIGH: 50% acceleration/deceleration
+    - CRITICAL: 75% acceleration/deceleration
+
+    Args:
+        metric: Metric being monitored
+        recent_values: Time series (oldest to newest), minimum 5 periods
+        as_of: Date of detection
+        entity: What's being monitored
+        min_periods: Minimum data points required (default 5)
+        acceleration_threshold: Minimum acceleration to alert (default 30%)
+
+    Returns:
+        List with 0-1 AlertCandidate. Empty if insufficient data or
+        rate of change below threshold.
+
+    Example:
+        >>> rate_of_change_anomaly(
+        ...     "revenue", [100, 98, 95, 90, 82], as_of=date(2024, 12, 15)
+        ... )
+        [AlertCandidate(kind=SALES_DROP, severity=HIGH, ...)]
+    """
+    if len(recent_values) < min_periods:
+        return []
+
+    # Calculate period-over-period changes
+    changes = [recent_values[i] - recent_values[i - 1] for i in range(1, len(recent_values))]
+
+    if not changes:
+        return []
+
+    # Compare recent rate of change vs longer-term average
+    # Recent = last 2 changes, longer-term = all changes
+    if len(changes) < 3:
+        return []  # Need at least 3 changes to compare
+
+    recent_rate = sum(changes[-2:]) / 2
+    longer_term_rate = sum(changes[:-2]) / len(changes[:-2])
+
+    # Avoid division by zero
+    if abs(longer_term_rate) < 0.01:
+        return []
+
+    # Calculate acceleration (positive = accelerating decline or growth)
+    acceleration = abs((recent_rate - longer_term_rate) / longer_term_rate)
+
+    # Determine severity
+    if acceleration < acceleration_threshold:
+        return []
+    elif acceleration < 0.50:
+        severity = Severity.MEDIUM
+    elif acceleration < 0.75:
+        severity = Severity.HIGH
+    else:
+        severity = Severity.CRITICAL
+
+    # Determine direction
+    is_decline = recent_rate < 0
+    is_accelerating = abs(recent_rate) > abs(longer_term_rate)
+
+    if is_decline:
+        kind = AlertKind.SALES_DROP
+        direction_desc = "accelerating decline" if is_accelerating else "slowing decline"
+    else:
+        kind = AlertKind.INVENTORY_RISK
+        direction_desc = "accelerating growth" if is_accelerating else "slowing growth"
+
+    metric_name = metric.replace("_", " ").title()
+    if is_decline and is_accelerating:
+        conclusion = "Decline is accelerating."
+    else:
+        conclusion = "Momentum shift detected."
+
+    return [
+        AlertCandidate(
+            kind=kind,
+            subject=entity,
+            title=f"{metric_name} showing {direction_desc}",
+            body=(
+                f"{metric_name} rate of change has shifted "
+                f"{acceleration:.0%} compared to recent trend. "
+                f"Recent average change: {recent_rate:,.0f} per period. "
+                f"Prior trend: {longer_term_rate:,.0f} per period. "
+                f"{conclusion}"
+            ),
+            severity=severity,
+            observed=recent_values[-1],
+            expected_low=None,
+            expected_high=None,
+            detected_for=as_of,
+            evidence={
+                "method": "rate_of_change",
+                "recent_rate": round(recent_rate, 2),
+                "longer_term_rate": round(longer_term_rate, 2),
+                "acceleration": round(acceleration, 4),
+                "direction": direction_desc,
+                "periods_analyzed": len(recent_values),
+            },
+            deep_link=f"/analytics/trend-analysis?metric={metric}&entity={entity}",
+        )
+    ]

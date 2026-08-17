@@ -215,6 +215,12 @@ class NotificationService:
             "fraud_risk": lambda: self._fraud_risk(principal, as_of),
             "inventory_risk": lambda: self._inventory_risk(principal, as_of),
             "recommendation_ready": lambda: self._recommendation_ready(principal, as_of),
+            # Advanced anomaly detectors
+            "rolling_baseline_anomaly": lambda: self._rolling_baseline_anomaly(principal, as_of),
+            "seasonal_baseline_anomaly": lambda: self._seasonal_baseline_anomaly(principal, as_of),
+            "forecast_residual_anomaly": lambda: self._forecast_residual_anomaly(principal, as_of),
+            "control_limits_anomaly": lambda: self._control_limits_anomaly(principal, as_of),
+            "rate_of_change_anomaly": lambda: self._rate_of_change_anomaly(principal, as_of),
         }
 
     async def _low_inventory(self, principal: Principal, as_of: date) -> list[AlertCandidate]:
@@ -308,6 +314,189 @@ class NotificationService:
             return []
         portfolio = await self._recommendations.recommend(principal, end_date=as_of)
         return detectors.recommendation_ready(summarise_recommendations(portfolio), as_of=as_of)
+
+    async def _rolling_baseline_anomaly(
+        self, principal: Principal, as_of: date
+    ) -> list[AlertCandidate]:
+        """Detect revenue deviations from 14-day rolling average."""
+        # Fetch 28 days (14 for baseline + 14 for buffer)
+        start = as_of - timedelta(days=27)
+
+        answer = await self._analytics.query(
+            principal,
+            domain_key="revenue",
+            metrics=["net_revenue"],
+            dimensions=["date"],
+            start_date=start,
+            end_date=as_of,
+            sort_by="date",
+            limit=28,
+        )
+
+        if not answer.result.rows or len(answer.result.rows) < 15:
+            return []
+
+        # Extract historical values (exclude current day)
+        historical_values = [
+            float(row.get("net_revenue") or 0.0) for row in answer.result.rows[:-1]
+        ]
+        current_value = float(answer.result.rows[-1].get("net_revenue") or 0.0)
+
+        return detectors.rolling_baseline_anomaly(
+            metric="net_revenue",
+            current_value=current_value,
+            historical_values=historical_values,
+            as_of=as_of,
+        )
+
+    async def _seasonal_baseline_anomaly(
+        self, principal: Principal, as_of: date
+    ) -> list[AlertCandidate]:
+        """Detect revenue deviations from same period last year."""
+        # Get current period (last 7 days)
+        current_start = as_of - timedelta(days=6)
+        current_end = as_of
+
+        # Get comparable period last year
+        seasonal_start = current_start - timedelta(days=365)
+        seasonal_end = current_end - timedelta(days=365)
+
+        async def total(first: date, last: date) -> float:
+            answer = await self._analytics.query(
+                principal,
+                domain_key="revenue",
+                metrics=["net_revenue"],
+                dimensions=[],
+                start_date=first,
+                end_date=last,
+                limit=1,
+            )
+            rows = answer.result.rows
+            return float(rows[0].get("net_revenue") or 0.0) if rows else 0.0
+
+        current_value = await total(current_start, current_end)
+        seasonal_value = await total(seasonal_start, seasonal_end)
+
+        return detectors.seasonal_baseline_anomaly(
+            metric="net_revenue",
+            current_value=current_value,
+            seasonal_comparison_value=seasonal_value,
+            as_of=as_of,
+            period_label=f"{seasonal_start} to {seasonal_end}",
+        )
+
+    async def _forecast_residual_anomaly(
+        self, principal: Principal, as_of: date
+    ) -> list[AlertCandidate]:
+        """Detect when actual revenue deviates significantly from forecast."""
+        if self._forecasts is None:
+            return []
+
+        # Get forecast for current period
+        section = await self._forecasts.forecast(principal, target="revenue")
+        if not section.rows:
+            return []
+
+        # Get actual revenue for current period
+        actual_answer = await self._analytics.query(
+            principal,
+            domain_key="revenue",
+            metrics=["net_revenue"],
+            dimensions=[],
+            start_date=as_of,
+            end_date=as_of,
+            limit=1,
+        )
+
+        if not actual_answer.result.rows:
+            return []
+
+        actual = float(actual_answer.result.rows[0].get("net_revenue") or 0.0)
+
+        # Find forecast for current date
+        forecast_row = next(
+            (row for row in section.rows if row.get("date") == str(as_of)),
+            None,
+        )
+
+        if not forecast_row:
+            return []
+
+        forecast = float(forecast_row.get("total") or 0.0)
+        forecast_lower = forecast_row.get("lower")
+        forecast_upper = forecast_row.get("upper")
+
+        return detectors.forecast_residual_anomaly(
+            metric="net_revenue",
+            actual=actual,
+            forecast=forecast,
+            forecast_lower=float(forecast_lower) if forecast_lower is not None else None,
+            forecast_upper=float(forecast_upper) if forecast_upper is not None else None,
+            as_of=as_of,
+        )
+
+    async def _control_limits_anomaly(
+        self, principal: Principal, as_of: date
+    ) -> list[AlertCandidate]:
+        """Detect revenue outside statistical control limits (3-sigma)."""
+        # Fetch 30 days for control chart baseline
+        start = as_of - timedelta(days=29)
+
+        answer = await self._analytics.query(
+            principal,
+            domain_key="revenue",
+            metrics=["net_revenue"],
+            dimensions=["date"],
+            start_date=start,
+            end_date=as_of,
+            sort_by="date",
+            limit=30,
+        )
+
+        if not answer.result.rows or len(answer.result.rows) < 21:
+            return []
+
+        # Extract historical values (exclude current day)
+        historical_values = [
+            float(row.get("net_revenue") or 0.0) for row in answer.result.rows[:-1]
+        ]
+        current_value = float(answer.result.rows[-1].get("net_revenue") or 0.0)
+
+        return detectors.control_limits_anomaly(
+            metric="net_revenue",
+            current_value=current_value,
+            historical_values=historical_values,
+            as_of=as_of,
+        )
+
+    async def _rate_of_change_anomaly(
+        self, principal: Principal, as_of: date
+    ) -> list[AlertCandidate]:
+        """Detect accelerating/decelerating revenue trends."""
+        # Fetch 14 days for trend analysis
+        start = as_of - timedelta(days=13)
+
+        answer = await self._analytics.query(
+            principal,
+            domain_key="revenue",
+            metrics=["net_revenue"],
+            dimensions=["date"],
+            start_date=start,
+            end_date=as_of,
+            sort_by="date",
+            limit=14,
+        )
+
+        if not answer.result.rows or len(answer.result.rows) < 5:
+            return []
+
+        recent_values = [float(row.get("net_revenue") or 0.0) for row in answer.result.rows]
+
+        return detectors.rate_of_change_anomaly(
+            metric="net_revenue",
+            recent_values=recent_values,
+            as_of=as_of,
+        )
 
     # ── Delivery ─────────────────────────────────────────────────────
 

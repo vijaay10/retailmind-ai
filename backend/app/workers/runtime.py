@@ -110,7 +110,7 @@ async def run_sweep(tenant_id: str | None = None) -> dict[str, Any]:
     )
 
     async with session_scope() as session:
-        service = build_notification_service(resolved, session)
+        service = await build_notification_service(resolved, session)
         recipients = await load_recipients(session, uuid.UUID(resolved))
         result = await service.sweep(system_principal(resolved), recipients=recipients)
         # Committed only after delivery: a notification row written before the

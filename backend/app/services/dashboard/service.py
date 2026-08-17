@@ -1,6 +1,6 @@
 """Executive dashboard service — composition, not new analytics.
 
-The executive surface owns no metrics of its own (Analytics §10). Every number
+The executive surface owns no metrics of its own (Analytics). Every number
 here comes from the same governed registry the analytics endpoints read, which
 is what guarantees the scorecard and a drill-down cannot disagree. What this
 service adds is *selection*: which metrics, which period, which ordering, and
@@ -36,7 +36,7 @@ from app.services.shared import authz
 log = structlog.get_logger(__name__)
 
 #: The comparison window for every headline. Seven days holds the weekday mix
-#: constant, which day-over-day does not (Analytics §1, FR-A03).
+#: constant, which day-over-day does not (Analytics, FR-A03).
 COMPARISON_DAYS = 7
 
 
@@ -285,7 +285,7 @@ class ExecutiveDashboardService:
         """Store league table, ranked within its peer cluster.
 
         The `cluster` filter is the honest way to read this: comparing a
-        flagship against an outlet is analytical malpractice (Analytics §3).
+        flagship against an outlet is analytical malpractice (Analytics).
         Unfiltered results still carry `store_cluster` so the client can group
         rather than mislead.
         """
@@ -329,7 +329,7 @@ class ExecutiveDashboardService:
             ],
             dimensions=["category", "region"],
             # A single day: positions are semi-additive, so a multi-day window
-            # would sum stock that existed only once (Analytics §4).
+            # would sum stock that existed only once (Analytics).
             start_date=end,
             end_date=end,
             sort_by="stockout_rate",
@@ -347,7 +347,7 @@ class ExecutiveDashboardService:
 
         Accuracy travels *with* the forecast, never behind a separate click.
         A planner deciding how much to trust a number needs to know how wrong
-        the model has been, and the design makes that non-optional (ARCH §28).
+        the model has been, and the design makes that non-optional (ARCH).
         """
         authz.require(principal, Permission.FORECASTS_READ)
 

@@ -1,4 +1,4 @@
-"""Root cause analysis orchestration (Analytics §9).
+"""Root cause analysis orchestration (Analytics).
 
 Given a KPI movement, this runs every investigator, ranks what they return,
 and hands back a briefing rather than a dashboard.

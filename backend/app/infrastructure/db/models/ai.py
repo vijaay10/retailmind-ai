@@ -1,4 +1,4 @@
-"""AI insight tables: RCA, NLQ, LLM usage, insight feed (DB §39).
+"""AI insight tables: RCA, NLQ, LLM usage, insight feed (DB).
 
 Common contract: every artifact pins ``data_snapshot_id``, carries
 ``prompt_version``/``model_id`` where an LLM touched it, and versions its JSONB
@@ -23,7 +23,7 @@ from app.infrastructure.db.models.enums import Confidence, InsightKind, NlqOutco
 
 
 class RcaResult(Base, TenantScopedMixin):
-    """A completed root-cause investigation (ARCH §27; AI §1)."""
+    """A completed root-cause investigation (ARCH;)."""
 
     __tablename__ = "rca_result"
     __table_args__ = (
@@ -34,7 +34,7 @@ class RcaResult(Base, TenantScopedMixin):
     id: Mapped[uuid.UUID] = uuid_pk()
     alert_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("alert.id", ondelete="SET NULL"),
-        comment="NULL = ad-hoc 'Why?' investigation (DB §21 R4)",
+        comment="NULL = ad-hoc 'Why?' investigation (DB R4)",
     )
     metric_key: Mapped[str]
     period_a: Mapped[Range[date]] = mapped_column(DATERANGE, comment="Baseline period")
@@ -48,7 +48,7 @@ class RcaResult(Base, TenantScopedMixin):
     top_contributors: Mapped[JSONDict] = mapped_column(comment="Ranked [{segment, delta, share}]")
     driver_correlations: Mapped[JSONDict] = mapped_column(
         server_default=text("'[]'::jsonb"),
-        comment="Co-occurring drivers — structurally labeled associational, never causal (AI §1)",
+        comment="Co-occurring drivers — structurally labeled associational, never causal (AI)",
     )
     narrative: Mapped[str | None]
     compiled_queries: Mapped[JSONDict] = mapped_column(comment="Query ids for evidence links")
@@ -85,7 +85,7 @@ class NlqSession(Base, TenantScopedMixin):
 
 
 class NlqTurn(Base):
-    """One NLQ turn — the per-generation audit row NFRs demand (DB §12.2).
+    """One NLQ turn — the per-generation audit row NFRs demand (DB.2).
 
     ``result_digest`` stores shape + first-rows hash, never full results (privacy-lean).
     """
@@ -99,7 +99,7 @@ class NlqTurn(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nlq_session.id", ondelete="CASCADE"))
     question: Mapped[str]
-    intent: Mapped[JSONDict | None] = mapped_column(comment="Validated IntentJSON (AI §6)")
+    intent: Mapped[JSONDict | None] = mapped_column(comment="Validated IntentJSON (AI)")
     compiled_sql: Mapped[str | None] = mapped_column(comment="The 'show the query' artifact")
     result_digest: Mapped[JSONDict | None]
     chart_spec: Mapped[JSONDict | None]
@@ -107,7 +107,7 @@ class NlqTurn(Base):
     outcome: Mapped[str]
     refusal_reason: Mapped[str | None]
     grounding_validation: Mapped[JSONDict | None] = mapped_column(
-        comment="Numeral-check results — the zero-hallucination evidence trail (PRD §24)"
+        comment="Numeral-check results — the zero-hallucination evidence trail (PRD)"
     )
     prompt_version: Mapped[str | None]
     model_id: Mapped[str | None]
@@ -125,10 +125,10 @@ class NlqTurn(Base):
 
 
 class LlmUsage(Base):
-    """Cost & budget ledger — partitioned monthly by ``at`` (DB §16).
+    """Cost & budget ledger — partitioned monthly by ``at`` (DB).
 
     The Redis counter is the gate; this table is the truth, reconciled nightly
-    (Backend §20). PK includes the partition key as Postgres requires.
+    (Backend). PK includes the partition key as Postgres requires.
     """
 
     __tablename__ = "llm_usage"
@@ -150,11 +150,11 @@ class LlmUsage(Base):
 
 
 class Insight(Base, TenantScopedMixin):
-    """The unified feed — system of record; channels are projections (PRD §32)."""
+    """The unified feed — system of record; channels are projections (PRD)."""
 
     __tablename__ = "insight"
     __table_args__ = (
-        # Feed hot path: keyset pagination newest-first (Backend §28)
+        # Feed hot path: keyset pagination newest-first (Backend)
         Index("ix_insight_feed", "tenant_id", text("occurred_at DESC")),
         enum_check("kind", InsightKind),
     )
@@ -162,10 +162,10 @@ class Insight(Base, TenantScopedMixin):
     id: Mapped[uuid.UUID] = uuid_pk()
     kind: Mapped[str]
     resource_type: Mapped[str] = mapped_column(
-        comment="Polymorphic target; integrity via service facade + orphan sweep (DB §21)"
+        comment="Polymorphic target; integrity via service facade + orphan sweep (DB)"
     )
     resource_id: Mapped[uuid.UUID]
-    headline: Mapped[str] = mapped_column(comment="≤22-word card text (AI §7)")
+    headline: Mapped[str] = mapped_column(comment="≤22-word card text (AI)")
     severity: Mapped[str | None]
     salience_score: Mapped[float] = mapped_column(Numeric(8, 2), server_default=text("0"))
     ai_generated: Mapped[bool] = mapped_column(server_default=text("false"))
@@ -174,7 +174,7 @@ class Insight(Base, TenantScopedMixin):
 
 
 class InsightFeedback(Base):
-    """Cross-artifact 👍/👎 with reasons — golden-set mining substrate (DB §39)."""
+    """Cross-artifact 👍/👎 with reasons — golden-set mining substrate (DB)."""
 
     __tablename__ = "insight_feedback"
 
@@ -185,3 +185,42 @@ class InsightFeedback(Base):
     positive: Mapped[bool]
     reason: Mapped[str | None]
     created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+
+
+class LlmRequestLog(Base):
+    """Detailed LLM request log for audit trail and debugging.
+
+    Unlike the partitioned ``llm_usage`` table (aggregate cost tracking), this
+    table records every request with full metadata: status, latency, errors.
+    Used for debugging failures, tracking per-user/per-tenant usage, and
+    building the reproducibility audit trail.
+    """
+
+    __tablename__ = "llm_request_log"
+    __table_args__ = (
+        Index("ix_llm_request_log_tenant_created", "tenant_id", "created_at"),
+        Index("ix_llm_request_log_request_id", "request_id", unique=True),
+        Index("ix_llm_request_log_status", "status", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        server_default=text("uuid_generate_v7()"), primary_key=True
+    )
+    request_id: Mapped[str] = mapped_column(comment="Unique request identifier (UUID)")
+    tenant_id: Mapped[uuid.UUID] = mapped_column(comment="Which tenant made this request")
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        comment="Which user initiated the request (null for system)"
+    )
+    model_id: Mapped[str] = mapped_column(comment="Model used (e.g., claude-sonnet-4-5-20250929)")
+    prompt_version: Mapped[str] = mapped_column(comment="Version of prompt template used")
+    tokens_in: Mapped[int] = mapped_column(comment="Input tokens consumed")
+    tokens_out: Mapped[int] = mapped_column(comment="Output tokens generated")
+    estimated_cost_usd: Mapped[float] = mapped_column(
+        Numeric(10, 6), comment="Estimated cost in USD"
+    )
+    latency_ms: Mapped[int] = mapped_column(comment="Response latency in milliseconds")
+    status: Mapped[str] = mapped_column(comment="success | error | timeout | rate_limited")
+    error: Mapped[str | None] = mapped_column(comment="Error message if status != success")
+    created_at: Mapped[datetime] = mapped_column(
+        server_default=text("now()"), comment="When this request was made"
+    )

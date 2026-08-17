@@ -58,6 +58,15 @@ class ApiError(Exception):
     def is_auth(self) -> bool:
         return self.status in {401, 403}
 
+    @property
+    def is_dependency_unavailable(self) -> bool:
+        """503 — a real backend dependency (today: only the warehouse) isn't
+        reachable. For a brand-new tenant this almost always means "not
+        provisioned yet", not "something broke" — the two read very
+        differently to a first-time user and should not share the same red
+        "did not load" panel. See `components.workspace_error`."""
+        return self.status == 503
+
 
 @dataclass(frozen=True, slots=True)
 class Tokens:
@@ -142,6 +151,9 @@ class ApiClient:
 
     def post(self, path: str, **json: Any) -> dict[str, Any]:
         return self._request("POST", path, json=json)
+
+    def patch(self, path: str, **json: Any) -> dict[str, Any]:
+        return self._request("PATCH", path, json=_clean(json))
 
     def download(self, path: str, **params: Any) -> tuple[bytes, str]:
         """Fetch a binary export, returning its bytes and content type."""

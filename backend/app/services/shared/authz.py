@@ -1,4 +1,4 @@
-"""Authorization policy — the single decision point (Backend design §9).
+"""Authorization policy — the single decision point.
 
 Two operations, deliberately. Everything in the platform that asks "may this
 caller do X?" comes through :func:`require` or :func:`has`; nothing else is

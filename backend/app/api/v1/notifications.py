@@ -1,4 +1,4 @@
-"""Notification endpoints (Analytics §13, PRD §32).
+"""Notification endpoints (Analytics, PRD).
 
 The in-app inbox, and a manual trigger for the detection sweep that the
 scheduler otherwise runs hourly.

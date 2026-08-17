@@ -112,6 +112,18 @@ def estate_warehouse(warehouse_builder) -> Path:  # type: ignore[no-untyped-def]
 
 
 @pytest.fixture(scope="session")
+def tenant_a_warehouse(warehouse_builder) -> Path:  # type: ignore[no-untyped-def]
+    """A small, real, distinct warehouse for Prompt 12.5's Tenant A."""
+    return warehouse_builder(warehouse.TENANT_A_SHAPE)[0]  # type: ignore[no-any-return]
+
+
+@pytest.fixture(scope="session")
+def tenant_b_warehouse(warehouse_builder) -> Path:  # type: ignore[no-untyped-def]
+    """A different-scale, real, distinct warehouse for Prompt 12.5's Tenant B."""
+    return warehouse_builder(warehouse.TENANT_B_SHAPE)[0]  # type: ignore[no-any-return]
+
+
+@pytest.fixture(scope="session")
 def deep_warehouse(warehouse_builder) -> Path:  # type: ignore[no-untyped-def]
     """Deep history, a narrow estate, and a real training run over it.
 
@@ -125,8 +137,40 @@ def deep_warehouse(warehouse_builder) -> Path:  # type: ignore[no-untyped-def]
     return path  # type: ignore[no-any-return]
 
 
-async def _client_for(warehouse_path: Path) -> AsyncIterator[AsyncClient]:
-    os.environ["RM_WAREHOUSE_DUCKDB_PATH"] = str(warehouse_path)
+async def _point_demo_tenant_at(migrated_db: dict[str, str], warehouse_path: Path) -> None:
+    """Repoint the demo tenant's resolved warehouse at this test run's file.
+
+    Prompt 12.5: the API resolves a tenant's warehouse from
+    `Tenant.warehouse_path` (falling back to a per-slug convention), not from
+    `RM_WAREHOUSE_DUCKDB_PATH` directly — that env var is what the *migration*
+    used to backfill the demo tenant's row once, not what request handling
+    reads. Each test run builds its own throwaway warehouse at a fresh
+    `tmp_path`, so the demo tenant's row has to be pointed at it explicitly,
+    the same way a real onboarding flow would point a newly provisioned
+    tenant at its own file.
+    """
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    url = (
+        f"postgresql+asyncpg://{migrated_db['RM_DB_USER']}:{migrated_db['RM_DB_PASSWORD']}"
+        f"@{migrated_db['RM_DB_HOST']}:{migrated_db['RM_DB_PORT']}/{migrated_db['RM_DB_NAME']}"
+    )
+    engine = create_async_engine(url)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text("UPDATE tenant SET warehouse_path = :path WHERE slug = 'northwind-threads'"),
+                {"path": str(warehouse_path)},
+            )
+    finally:
+        await engine.dispose()
+
+
+async def _client_for(
+    migrated_db: dict[str, str], warehouse_path: Path
+) -> AsyncIterator[AsyncClient]:
+    await _point_demo_tenant_at(migrated_db, warehouse_path)
     # No Redis in the test process: a cache shared across suites would serve
     # one suite's rows to another's assertions.
     os.environ.pop("RM_REDIS_CACHE_URL", None)
@@ -147,14 +191,14 @@ async def api(migrated_db: dict[str, str], estate_warehouse: Path) -> AsyncItera
     engine and a cache, and leaking those between tests is how one test's
     connection pool becomes another's flake.
     """
-    async for client in _client_for(estate_warehouse):
+    async for client in _client_for(migrated_db, estate_warehouse):
         yield client
 
 
 @pytest.fixture
 async def deep_api(migrated_db: dict[str, str], deep_warehouse: Path) -> AsyncIterator[AsyncClient]:
     """The same, over the deep-history warehouse."""
-    async for client in _client_for(deep_warehouse):
+    async for client in _client_for(migrated_db, deep_warehouse):
         yield client
 
 

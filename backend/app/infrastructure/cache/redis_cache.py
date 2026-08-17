@@ -1,4 +1,4 @@
-"""Redis result cache for analytics queries (Backend design §20).
+"""Redis result cache for analytics queries.
 
 The invalidation story is the interesting part: cache keys embed the warehouse
 **snapshot id**, so a publish mints a new key space and yesterday's entries

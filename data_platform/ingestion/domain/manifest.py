@@ -4,7 +4,7 @@ A bronze partition without ``manifest.json`` is invisible to everything
 downstream. Writing the manifest *last*, after the data files are in place, is
 what makes landing atomic without a transactional filesystem: a crash
 mid-write leaves an unreferenced directory, not a half-visible partition
-(ETL §3, §19).
+(ETL,).
 """
 
 import hashlib
@@ -21,7 +21,7 @@ def file_checksum(path: Path, *, chunk_size: int = 1 << 20) -> str:
     """SHA-256 of a file, read in chunks so large drops stay memory-bounded.
 
     Drives file-level duplicate detection: a re-drop with an identical
-    checksum is skipped, a changed one is treated as a correction (ETL §7).
+    checksum is skipped, a changed one is treated as a correction (ETL).
     """
     digest = hashlib.sha256()
     with path.open("rb") as handle:

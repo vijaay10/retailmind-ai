@@ -39,7 +39,7 @@ try:
         as_of=session.data_date().isoformat(),
     )
 except ApiError as error:
-    ui.failure(str(error), what="The store ranking did not load")
+    ui.workspace_error(error, what="The store ranking did not load")
     st.stop()
 
 stores = ranking.get("stores") or []

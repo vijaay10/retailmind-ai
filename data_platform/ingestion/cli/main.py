@@ -1,4 +1,4 @@
-"""Operator CLI: run, backfill, replay, inspect (ETL design §31).
+"""Operator CLI: run, backfill, replay, inspect.
 
 Backfill is deliberately *the same code path* as a nightly run with a
 different window — there is no separate backfill logic to rot, which is the
@@ -322,6 +322,79 @@ def demo_warehouse(
 
     verify(out)
     typer.echo(f"→ {out} ({out.stat().st_size / 1e6:.0f} MB)")
+
+
+@app.command("onboard")
+def onboard(
+    path: Annotated[Path, typer.Argument(help="A CSV file from a company being onboarded")],
+    source: Annotated[
+        str | None,
+        typer.Option(help="Skip detection and validate against a known source (e.g. 'pos')"),
+    ] = None,
+    table: Annotated[str | None, typer.Option(help="Paired with --source")] = None,
+) -> None:
+    """Detect, map, and validate an arbitrary uploaded file — Prompt 12.
+
+    The real entry point for "a new company uploads their data": no code
+    change, no new schema file, for any source whose shape resembles one of
+    the declared canonical schemas under `ingestion/schemas/`. Prints a
+    business-language report — the same three-step pipeline
+    (`onboarding.detect_dataset_type` → `suggest_column_mapping` →
+    `validate_mapped_dataset`) the onboarding UI's "Data Sources" workspace
+    describes, run for real here rather than only described there.
+    """
+    import csv
+
+    from onboarding import detect_dataset_type, suggest_column_mapping, validate_mapped_dataset
+    from onboarding.matching import load_known_schemas
+
+    with path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    if not rows:
+        typer.echo(f"{path}: no rows found")
+        raise typer.Exit(code=1)
+    columns = list(rows[0].keys())
+
+    if source and table:
+        schema = _load(source, table)
+        typer.echo(f"Validating against {source}.{table} (skipping detection, as requested)\n")
+    else:
+        typer.echo(f"Detected columns: {', '.join(columns)}\n")
+        results = detect_dataset_type(columns, rows[:20])
+        typer.echo("Dataset detection:")
+        for result in results[:3]:
+            pct = f"{result.confidence:.0%}"
+            typer.echo(f"  {result.source}.{result.table:<12} confidence {pct:>4}")
+        if not results or results[0].confidence < 0.4:
+            typer.echo(
+                "\nNo declared schema matches with reasonable confidence — "
+                "this file's dataset type could not be determined."
+            )
+            raise typer.Exit(code=1)
+        best = results[0]
+        typer.echo(f"\n→ Best match: {best.source}.{best.table} ({best.confidence:.0%})\n")
+        schema = next(
+            s for s in load_known_schemas() if s.source == best.source and s.table == best.table
+        )
+
+    typer.echo("Column mapping:")
+    mapping = suggest_column_mapping(columns, schema)
+    for suggestion in mapping:
+        target = suggestion.canonical_field or "(unmapped)"
+        typer.echo(f"  {suggestion.source_column:<20} → {target:<20} {suggestion.reason}")
+
+    rename = {m.source_column: m.canonical_field for m in mapping if m.canonical_field}
+    mapped_rows = [
+        {rename.get(key, key): value for key, value in row.items() if key in rename} for row in rows
+    ]
+
+    typer.echo("\nValidation:")
+    report = validate_mapped_dataset(mapped_rows, schema)
+    typer.echo(f"  ✓ {report.total_records:,} records detected")
+    typer.echo(f"  ✓ {report.valid_pct:.1f}% valid records")
+    for issue in report.issues:
+        mark = "✕" if issue.severity == "error" else "⚠"
+        typer.echo(f"  {mark} {issue.message}")
 
 
 def verify(path: Path) -> None:

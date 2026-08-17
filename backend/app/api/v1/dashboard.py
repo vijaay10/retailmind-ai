@@ -1,4 +1,4 @@
-"""Executive dashboard endpoints (UX spec §S1, Analytics §10).
+"""Executive dashboard endpoints (UX spec §S1,).
 
 Ten tiles, ten endpoints, plus one composite. The split is deliberate: tiles
 refresh on different cadences and fail independently, so a slow inventory

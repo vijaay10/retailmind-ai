@@ -1,4 +1,4 @@
-"""Analytics DTOs (Backend design §15).
+"""Analytics DTOs.
 
 Responses always carry a `meta` block: row count, the warehouse snapshot the
 numbers came from, freshness, and whether the answer was cached. A number

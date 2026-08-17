@@ -1,4 +1,4 @@
-"""Synthetic outbound deliveries — the shipping feed (RCA §9).
+"""Synthetic outbound deliveries — the shipping feed (RCA).
 
 Only ecommerce orders ship. Store purchases leave with the customer and never
 appear here, which means an absent shipment is not a fast one: the fact has to

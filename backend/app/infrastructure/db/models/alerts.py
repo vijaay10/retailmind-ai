@@ -1,7 +1,7 @@
-"""Alert lifecycle: alert, alert_event, alert_mute (DB §12.2, §13, ARCH §29).
+"""Alert lifecycle: alert, alert_event, alert_mute (DB.2,,).
 
 The alert row is a *record of detection* — reproducible via its snapshot pin.
-Lifecycle transitions are decided by the domain state machine (Backend §3);
+Lifecycle transitions are decided by the domain state machine (Backend);
 these tables only persist its outcomes.
 """
 
@@ -25,7 +25,7 @@ from app.infrastructure.db.models.enums import AlertStatus, Severity
 class Alert(Base, TenantScopedMixin):
     __tablename__ = "alert"
     __table_args__ = (
-        # Inbox hot path: open criticals newest-first, index-only (DB §13 ix_alert_inbox)
+        # Inbox hot path: open criticals newest-first, index-only (DB ix_alert_inbox)
         Index(
             "ix_alert_inbox",
             "tenant_id",
@@ -33,9 +33,9 @@ class Alert(Base, TenantScopedMixin):
             "severity",
             text("detected_at DESC"),
         ),
-        # Flap suppression: recent alerts for a rule (DB §13 ix_alert_series)
+        # Flap suppression: recent alerts for a rule (DB ix_alert_series)
         Index("ix_alert_series", "tenant_id", "rule_id", text("detected_at DESC")),
-        # Tile-badge lookup by dimension slice (DB §12 GIN)
+        # Tile-badge lookup by dimension slice (DB GIN)
         Index(
             "ix_alert_series_key",
             "series_key",
@@ -48,7 +48,7 @@ class Alert(Base, TenantScopedMixin):
 
     id: Mapped[uuid.UUID] = uuid_pk()
     rule_id: Mapped[uuid.UUID] = mapped_column(
-        # RESTRICT: alerts are records of fact; rules soft-retire instead (DB §21 R3)
+        # RESTRICT: alerts are records of fact; rules soft-retire instead (DB R3)
         ForeignKey("alert_rule.id", ondelete="RESTRICT"),
     )
     series_key: Mapped[JSONDict] = mapped_column(
@@ -61,10 +61,10 @@ class Alert(Base, TenantScopedMixin):
     status: Mapped[str] = mapped_column(server_default=text("'open'"))
     detector_scores: Mapped[JSONDict] = mapped_column(
         server_default=text("'{}'::jsonb"),
-        comment="Per-detector votes/scores — detector-level explainability (AI §8)",
+        comment="Per-detector votes/scores — detector-level explainability (AI)",
     )
     narration: Mapped[str | None] = mapped_column(
-        comment="One-sentence grounded narration; NULL under T2 fallback (AI §0.2)"
+        comment="One-sentence grounded narration; NULL under T2 fallback (AI.2)"
     )
     detected_at: Mapped[datetime]
     acked_at: Mapped[datetime | None]
@@ -74,7 +74,7 @@ class Alert(Base, TenantScopedMixin):
     resolved_at: Mapped[datetime | None]
     data_snapshot_id: Mapped[str] = mapped_column(
         ForeignKey("data_snapshot.id", ondelete="RESTRICT"),
-        comment="Reproducibility pin (DB §21 R10) — undeletable while referenced",
+        comment="Reproducibility pin (DB R10) — undeletable while referenced",
     )
     created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
 
@@ -102,7 +102,7 @@ class AlertEvent(Base):
 
 
 class AlertMute(Base, TenantScopedMixin):
-    """Scoped, time-boxed mutes. Overlap per series is impossible by constraint (DB §11).
+    """Scoped, time-boxed mutes. Overlap per series is impossible by constraint (DB).
 
     ``series_hash`` is the deterministic digest of the muted series_key slice;
     the GiST exclusion constraint (btree_gist extension) rejects overlapping

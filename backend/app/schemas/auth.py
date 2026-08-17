@@ -1,4 +1,4 @@
-"""Auth DTOs (Backend design §15–16).
+"""Auth DTOs (Backend design–16).
 
 Requests are strict (``extra="forbid"``) so a typo'd field is a 422 rather
 than a silently ignored parameter. Responses are hand-mapped from domain

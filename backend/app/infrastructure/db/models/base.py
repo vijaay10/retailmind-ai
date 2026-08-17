@@ -1,6 +1,6 @@
 """Declarative base, naming conventions, and shared mixins.
 
-Conventions (DB design §25):
+Conventions (DB design):
     * constraint names: ``ix_`` / ``uq_`` / ``fk_`` / ``ck_`` prefixes, generated
       by the metadata naming convention so Alembic diffs stay deterministic;
     * UUIDv7 primary keys, generated **database-side** by ``uuid_generate_v7()``
@@ -9,7 +9,7 @@ Conventions (DB design §25):
       maintained by a DB trigger (genesis migration) — application code cannot
       forget it;
     * every tenant-scoped table carries an indexed ``tenant_id`` (RESTRICT —
-      tenant offboarding is a runbook, not a cascade; DB §21 R1).
+      tenant offboarding is a runbook, not a cascade; DB R1).
 """
 
 import uuid
@@ -43,7 +43,7 @@ class Base(DeclarativeBase):
 
 
 def uuid_pk() -> Mapped[uuid.UUID]:
-    """UUIDv7 primary key column (time-ordered → index-friendly, DB §9)."""
+    """UUIDv7 primary key column (time-ordered → index-friendly, DB)."""
     return mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
@@ -52,7 +52,7 @@ def uuid_pk() -> Mapped[uuid.UUID]:
 
 
 def enum_check(column: str, enum: type[StrEnum]) -> CheckConstraint:
-    """CHECK constraint binding a text column to a StrEnum's values (DB §11)."""
+    """CHECK constraint binding a text column to a StrEnum's values (DB)."""
     values = ", ".join(f"'{member.value}'" for member in enum)
     return CheckConstraint(f"{column} IN ({values})", name=f"{column}_valid")
 
@@ -67,10 +67,10 @@ class TimestampMixin:
 class TenantScopedMixin:
     """Row scoping for multi-tenancy.
 
-    Repositories inject the tenant predicate structurally (Backend §4); this
+    Repositories inject the tenant predicate structurally (Backend); this
     mixin guarantees the column and its FK exist so that injection is always
     possible. Composite ``(tenant_id, …)`` indexes are declared per-table where
-    a hot query needs them (DB §12–13).
+    a hot query needs them (DB–13).
     """
 
     @declared_attr

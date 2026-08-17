@@ -1,5 +1,5 @@
 """Pipeline observability mirrored into the app DB — product surfaces read these
-(pipeline health screens, quarantine workflow, job status; DB §36).
+(pipeline health screens, quarantine workflow, job status; DB).
 
 Operator logs go to the log stack; these tables are *product state*.
 """
@@ -22,12 +22,12 @@ from app.infrastructure.db.models.enums import RunStatus
 
 
 class PipelineRun(Base, TenantScopedMixin):
-    """One connector execution window — mirror of Airflow state (DB §12.2)."""
+    """One connector execution window — mirror of Airflow state (DB.2)."""
 
     __tablename__ = "pipeline_run"
     __table_args__ = (
         Index("ix_pipeline_run_connector", "connector_id", text("started_at DESC")),
-        # Backfill overlap detection (DB §13 ix_run_window)
+        # Backfill overlap detection (DB ix_run_window)
         Index("ix_pipeline_run_window", "connector_id", "window"),
         enum_check("status", RunStatus),
     )
@@ -44,7 +44,7 @@ class PipelineRun(Base, TenantScopedMixin):
     watermark_before: Mapped[str | None]
     watermark_after: Mapped[str | None]
     status: Mapped[str] = mapped_column(server_default=text("'pending'"))
-    error_class: Mapped[str | None] = mapped_column(comment="ETL §21 taxonomy key")
+    error_class: Mapped[str | None] = mapped_column(comment="ETL taxonomy key")
     started_at: Mapped[datetime]
     ended_at: Mapped[datetime | None]
 
@@ -54,7 +54,7 @@ class PipelineRun(Base, TenantScopedMixin):
 
 
 class DqResult(Base):
-    """One expectation outcome per run (feeds trust dashboards + DQ scoring, ETL §18)."""
+    """One expectation outcome per run (feeds trust dashboards + DQ scoring,)."""
 
     __tablename__ = "dq_result"
     __table_args__ = (Index("ix_dq_result_run", "pipeline_run_id", "passed"),)
@@ -75,7 +75,7 @@ class DqResult(Base):
 
 
 class QuarantineBatch(Base, TenantScopedMixin):
-    """A quarantined partition awaiting fix + replay (US-09 workflow; DB §36)."""
+    """A quarantined partition awaiting fix + replay (US-09 workflow; DB)."""
 
     __tablename__ = "quarantine_batch"
 
@@ -95,7 +95,7 @@ class QuarantineBatch(Base, TenantScopedMixin):
 
 
 class JobRun(Base, TenantScopedMixin):
-    """Async job lifecycle (reports, RCA, backfills) — powers /v1/jobs/{id} (Backend §19)."""
+    """Async job lifecycle (reports, RCA, backfills) — powers /v1/jobs/{id} (Backend)."""
 
     __tablename__ = "job_run"
     __table_args__ = (

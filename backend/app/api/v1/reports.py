@@ -1,4 +1,4 @@
-"""Report endpoints (Analytics §12).
+"""Report endpoints (Analytics).
 
 Composes the platform's own surfaces into a document and renders it to PDF,
 PowerPoint, or Excel.

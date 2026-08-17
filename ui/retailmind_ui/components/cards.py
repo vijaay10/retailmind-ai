@@ -328,8 +328,11 @@ def ai_summary(
 
     Cyan and the pulse dot mean "a model wrote this from the platform's own
     numbers". The distinction matters more here than anywhere else in the
-    product: a reader who cannot tell generated prose from a measured figure
-    will eventually quote one as the other.
+    product: a reader who cannot tell narrated prose from a measured figure
+    will eventually quote one as the other. The tag reads "explained" rather
+    than "generated" — the number above it is observed or computed, never
+    the model's; only the sentence describing it is the model's writing,
+    grounded in the figures the platform already published.
     """
     lines = "".join(f"<li>{escape(item)}</li>" for item in bullets) if bullets else ""
     html(
@@ -339,7 +342,7 @@ def ai_summary(
                 <span class="rm-dot {"rm-live" if live else ""}"
                       style="background:{SEMANTIC["ai"]}"></span>
                 <span class="rm-ai-title">{escape(title)}</span>
-                <span class="rm-ai-tag">generated</span>
+                <span class="rm-ai-tag">explained</span>
             </div>
             <div class="rm-ai-body">{escape(text)}</div>
             {f"<ul class='rm-ai-list'>{lines}</ul>" if lines else ""}

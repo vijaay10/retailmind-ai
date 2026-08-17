@@ -3,7 +3,7 @@
 Everything in the pipeline is scoped to ``(source, table, window)``. A window
 is a half-open range of **business dates**, never a wall-clock offset: that is
 what makes a re-run of yesterday produce byte-identical output whether it runs
-tonight or in six months (ETL §5, FR-D03).
+tonight or in six months (ETL, FR-D03).
 """
 
 from collections.abc import Iterator
@@ -28,7 +28,7 @@ class Window:
 
     @classmethod
     def trailing(cls, end_exclusive: date, days: int) -> "Window":
-        """The rolling reprocess window that absorbs late data (ETL §6)."""
+        """The rolling reprocess window that absorbs late data (ETL)."""
         return cls(end_exclusive - timedelta(days=days), end_exclusive)
 
     @property

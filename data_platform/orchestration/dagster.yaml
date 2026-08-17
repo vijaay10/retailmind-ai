@@ -1,0 +1,75 @@
+---
+# Dagster instance configuration
+#
+# This file configures Dagster's run storage, event logs, and schedules.
+# For development, we use SQLite and local filesystem storage.
+# For production, use Postgres and object storage.
+
+# Run storage (tracks pipeline run history)
+run_storage:
+  module: dagster.core.storage.runs
+  class: SqliteRunStorage
+  config:
+    base_dir: .dagster_home/history
+
+# Event log storage (tracks asset materializations)
+event_log_storage:
+  module: dagster.core.storage.event_log
+  class: SqliteEventLogStorage
+  config:
+    base_dir: .dagster_home/history
+
+# Schedule storage (tracks schedule state)
+schedule_storage:
+  module: dagster.core.storage.schedules
+  class: SqliteScheduleStorage
+  config:
+    base_dir: .dagster_home/schedules
+
+# Run launcher (how runs are executed)
+run_launcher:
+  module: dagster.core.launcher
+  class: DefaultRunLauncher
+  config:
+    wait_for_processes: false
+
+# Run coordinator (controls run concurrency)
+run_coordinator:
+  module: dagster.core.run_coordinator
+  class: QueuedRunCoordinator
+  config:
+    max_concurrent_runs: 10
+    tag_concurrency_limits:
+      - key: "dagster/priority"
+        value: "high"
+        limit: 5
+      - key: "job_type"
+        value: "ingestion"
+        limit: 3
+
+# Compute logs (capture stdout/stderr from runs)
+compute_logs:
+  module: dagster.core.storage.local_compute_log_manager
+  class: LocalComputeLogManager
+  config:
+    base_dir: .dagster_home/logs
+
+# Local artifact storage (for ops that produce files)
+local_artifact_storage:
+  module: dagster.core.storage.root
+  class: LocalArtifactStorage
+  config:
+    base_dir: .dagster_home/storage
+
+# Telemetry (disable for dev, enable for production)
+telemetry:
+  enabled: false
+
+# Retention policy (clean up old runs)
+retention:
+  schedule:
+    purge_after_days:
+      skipped: 7
+      success: 30
+      failure: 90
+      canceled: 7

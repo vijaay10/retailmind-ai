@@ -179,6 +179,41 @@ def stat(
     )
 
 
+def data_health(sources: list[str], *, as_of: str, cadence: str = "Updated daily") -> None:
+    """What feeds this screen, and how fresh it is — honestly.
+
+    The platform runs one daily warehouse batch, not an independently
+    tracked pipeline per source: there is exactly one real freshness date
+    (``as_of``, the same value every screen's date controls default to),
+    not six. Listing the sources without inventing six different clocks for
+    them is the whole point — a reader asking "how complete is this?"
+    deserves the true shape of the answer, not a fabricated one that merely
+    looks more granular.
+    """
+    chips = "".join(f'<span class="rm-health-chip">{escape(src)}</span>' for src in sources)
+    html(
+        f"""
+        <div class="rm-health">
+            <div class="rm-health-row">{chips}</div>
+            <div class="rm-health-note">
+                {escape(cadence)} · data through {escape(as_of)}. One warehouse refresh feeds
+                every source above — there is no independent per-source timestamp to show.
+            </div>
+        </div>
+        <style>
+        .rm-health {{ margin: 0.7rem 0 0.3rem; }}
+        .rm-health-row {{ display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.4rem; }}
+        .rm-health-chip {{
+            font-size: 0.72rem; color: var(--rm-muted);
+            border: 1px solid var(--rm-line); border-radius: 999px;
+            padding: 0.15rem 0.65rem;
+        }}
+        .rm-health-note {{ font-size: 0.75rem; color: var(--rm-faint); }}
+        </style>
+        """
+    )
+
+
 def chip(text: str, *, colour: str = "", filled: bool = False) -> str:
     """An inline label. Returns markup for composition into a larger fragment."""
     tone = colour or INK["muted"]
@@ -248,6 +283,54 @@ def failure(message: str, *, what: str = "This did not load") -> None:
         </style>
         """
     )
+
+
+def workspace_error(error: Exception, *, what: str = "This did not load") -> None:
+    """A failed API call, read correctly for who's asking.
+
+    Every workspace used to route every ``ApiError`` through the same red
+    "did not load" panel — accurate for a genuine outage, actively
+    misleading for a brand-new tenant whose warehouse simply hasn't been
+    provisioned yet (a 503 `dependency-unavailable`, Prompt 12.5's
+    per-tenant isolation fix's own honest failure mode for that case). The
+    first reads as "the product is broken"; the second is an expected,
+    temporary, first-day state. Import-time check on
+    ``error.is_dependency_unavailable`` rather than a second exception type,
+    so every existing ``except ApiError`` call site gets the distinction by
+    changing one function name, not by learning a new one.
+    """
+    if getattr(error, "is_dependency_unavailable", False):
+        html(
+            f"""
+            <div class="rm-pending">
+                <div class="rm-pending-icon">◐</div>
+                <div>
+                    <div class="rm-pending-title">Your workspace is still being set up</div>
+                    <div class="rm-pending-detail">
+                        This screen needs your data to be connected first. Once a data
+                        source finishes processing, it appears here automatically —
+                        nothing to do on this screen in the meantime.
+                    </div>
+                </div>
+            </div>
+            <style>
+            .rm-pending {{
+                display: flex; gap: 0.85rem; align-items: flex-start;
+                border: 1px dashed {SEMANTIC["ai"]}55;
+                background: {SEMANTIC["ai"]}0c;
+                border-radius: 14px; padding: 1.1rem 1.25rem;
+            }}
+            .rm-pending-icon {{ color: {SEMANTIC["ai"]}; font-size: 1.1rem; line-height: 1.4; }}
+            .rm-pending-title {{ font-weight: 600; font-size: 0.9375rem; }}
+            .rm-pending-detail {{
+                color: var(--rm-muted); font-size: 0.8125rem; margin-top: 0.25rem;
+                max-width: 60ch;
+            }}
+            </style>
+            """
+        )
+        return
+    failure(str(error), what=what)
 
 
 def skeleton(*, rows: int = 3, height: str = "58px") -> None:

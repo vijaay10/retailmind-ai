@@ -1,0 +1,168 @@
+# Alertmanager configuration.
+#
+# Routes alerts to appropriate receivers based on severity and team ownership.
+# Configured receivers: email, Slack (both require secrets to be set).
+
+global:
+  # How long to wait before sending a notification about a new alert group.
+  # Alerts that fire in quick succession are batched into one notification.
+  resolve_timeout: 5m
+
+  # SMTP configuration (optional — Alertmanager works without it, just won't send email).
+  smtp_from: 'retailmind-alerts@${RM_DOMAIN:-example.com}'
+  smtp_smarthost: '${RM_SMTP_HOST:-smtp.example.com}:587'
+  smtp_auth_username: '${RM_SMTP_USER:-alerts}'
+  smtp_auth_password_file: '/run/secrets/smtp_password'
+  smtp_require_tls: true
+
+# Routing tree: where each alert goes based on its labels.
+#
+# The structure is severity-first (critical → warning → info), then by team.
+# Alerts without a team label go to a default receiver.
+
+route:
+  # Default receiver for alerts that don't match any route below.
+  receiver: 'default'
+
+  # How long to wait before sending initial notification for a group of alerts.
+  # Batching reduces notification spam.
+  group_wait: 30s
+
+  # How long to wait before sending notification about new alerts in an already-notified group.
+  group_interval: 5m
+
+  # How long to wait before re-sending a notification for an alert that hasn't resolved.
+  repeat_interval: 4h
+
+  # Alerts are grouped by these labels. Alerts with the same labels are batched together.
+  group_by: ['alertname', 'severity', 'component']
+
+  # Child routes: more specific matching.
+  routes:
+    # Critical alerts: page immediately, notify via multiple channels.
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      group_wait: 10s
+      repeat_interval: 1h
+      continue: false  # Don't evaluate further routes for critical alerts
+
+    # Warning alerts: notify, but with longer batching windows.
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+      group_wait: 5m
+      repeat_interval: 12h
+
+    # Database-specific alerts: route to DBA team (if configured).
+    - match_re:
+        component: '(postgres|database)'
+      receiver: 'dba-team'
+      group_wait: 2m
+
+    # Pipeline/ETL alerts: route to data team (if configured).
+    - match_re:
+        component: '(pipeline|etl|ingestion)'
+      receiver: 'data-team'
+      group_wait: 5m
+
+# Inhibition rules: suppress certain alerts when others are firing.
+#
+# Example: If the API is down, don't also alert about high error rates
+# (the error rate is high *because* the API is down).
+
+inhibit_rules:
+  # If ApiDown is firing, suppress HighErrorRate.
+  - source_match:
+      alertname: 'ApiDown'
+    target_match:
+      alertname: 'HighErrorRate'
+    equal: ['component']
+
+  # If database is down, suppress slow query alerts.
+  - source_match:
+      severity: 'critical'
+      component: 'postgres'
+    target_match:
+      severity: 'warning'
+      component: 'postgres'
+    equal: ['component']
+
+# Receivers: where notifications are sent.
+#
+# Each receiver can have multiple notification configs (email + Slack, for example).
+# Secrets are read from Docker secrets mounted at /run/secrets.
+
+receivers:
+  # Default receiver: logs to stdout, optionally sends email.
+  - name: 'default'
+    email_configs:
+      - to: '${RM_ALERT_EMAIL:-ops@example.com}'
+        headers:
+          Subject: '[RetailMind] Alert: {{ .GroupLabels.alertname }}'
+        html: |
+          <h2>{{ .GroupLabels.alertname }}</h2>
+          <p><strong>Severity:</strong> {{ .GroupLabels.severity }}</p>
+          <p><strong>Summary:</strong> {{ (index .Alerts 0).Annotations.summary }}</p>
+          <p><strong>Action:</strong> {{ (index .Alerts 0).Annotations.action }}</p>
+          <hr>
+          <h3>Firing Alerts ({{ .Alerts.Firing | len }})</h3>
+          <ul>
+          {{ range .Alerts.Firing }}
+            <li>{{ .Labels.alertname }}: {{ .Annotations.summary }}</li>
+          {{ end }}
+          </ul>
+          {{ if .Alerts.Resolved }}
+          <h3>Resolved Alerts ({{ .Alerts.Resolved | len }})</h3>
+          <ul>
+          {{ range .Alerts.Resolved }}
+            <li>{{ .Labels.alertname }}: {{ .Annotations.summary }}</li>
+          {{ end }}
+          </ul>
+          {{ end }}
+
+  # Critical alerts: email + Slack (if configured).
+  - name: 'critical-alerts'
+    email_configs:
+      - to: '${RM_ALERT_EMAIL_CRITICAL:-oncall@example.com}'
+        headers:
+          Subject: '[CRITICAL] RetailMind: {{ .GroupLabels.alertname }}'
+          Priority: '1'  # High priority header
+        send_resolved: true
+    slack_configs:
+      - api_url_file: '/run/secrets/slack_webhook'
+        channel: '${RM_SLACK_CHANNEL_CRITICAL:-#alerts-critical}'
+        title: '[CRITICAL] {{ .GroupLabels.alertname }}'
+        text: |
+          *Summary:* {{ (index .Alerts 0).Annotations.summary }}
+          *Action:* {{ (index .Alerts 0).Annotations.action }}
+          *Severity:* {{ .GroupLabels.severity }}
+        send_resolved: true
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+
+  # Warning alerts: email only (less noisy).
+  - name: 'warning-alerts'
+    email_configs:
+      - to: '${RM_ALERT_EMAIL:-ops@example.com}'
+        headers:
+          Subject: '[Warning] RetailMind: {{ .GroupLabels.alertname }}'
+        send_resolved: true
+
+  # DBA team: specialized routing for database alerts.
+  - name: 'dba-team'
+    email_configs:
+      - to: '${RM_ALERT_EMAIL_DBA:-dba@example.com}'
+        headers:
+          Subject: '[Database] {{ .GroupLabels.alertname }}'
+
+  # Data team: specialized routing for pipeline/ETL alerts.
+  - name: 'data-team'
+    email_configs:
+      - to: '${RM_ALERT_EMAIL_DATA:-data@example.com}'
+        headers:
+          Subject: '[Pipeline] {{ .GroupLabels.alertname }}'
+
+# Templates: customize notification content (optional).
+#
+# templates:
+#   - '/etc/alertmanager/templates/*.tmpl'

@@ -1,4 +1,4 @@
-"""Run-scoped structured logging (ETL design §33).
+"""Run-scoped structured logging.
 
 One logging standard across the platform: the same structlog JSON the backend
 emits, with pipeline context (run id, source, table, window) bound so every
@@ -41,7 +41,7 @@ def run_context(**fields: Any) -> Iterator[None]:
     """Bind pipeline context for the duration of a stage.
 
     Data *values* are never logged — only keys, counts, and identifiers
-    (ETL §33 PII discipline). The scrubber in the backend is the backstop;
+    (ETL PII discipline). The scrubber in the backend is the backstop;
     this convention is the primary control.
     """
     tokens = structlog.contextvars.bind_contextvars(**fields)

@@ -72,6 +72,18 @@ ESTATE = Shape(days=63, stores=10, lines_per_store=24, skus_per_store=8)
 #: estate would take over the same history.
 DEEP_HISTORY = Shape(days=140, stores=3, lines_per_store=20, skus_per_store=8)
 
+#: Prompt 12.5 — two deliberately different-scale shapes for the real,
+#: end-to-end multi-tenant warehouse isolation proof
+#: (`test_tenant_warehouse_isolation.py`). Small and fast: what these prove
+#: is that two tenants' warehouses are physically separate files with
+#: distinguishably different revenue, not that either one is realistic.
+#: Both use the SAME synthetic generator with the SAME seeding scheme, so
+#: they naturally produce overlapping SKU/store business ids across
+#: tenants — exactly the "identical business id, different tenant" case
+#: Prompt 12.5 asks to prove doesn't collide.
+TENANT_A_SHAPE = Shape(days=14, stores=2, lines_per_store=22, skus_per_store=6)
+TENANT_B_SHAPE = Shape(days=14, stores=6, lines_per_store=24, skus_per_store=10)
+
 
 def build(shape: Shape, root: Path) -> Path:
     """Generate sources, ingest them, and build the warehouse.

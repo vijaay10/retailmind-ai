@@ -154,6 +154,14 @@ WORKSPACES: tuple[Workspace, ...] = (
         "Oversight",
         "Identity, permissions, the metric vocabulary, and session control.",
     ),
+    Workspace(
+        "Data Sources",
+        "workspaces/13_Data_Sources.py",
+        "data.manage",
+        "⇪",
+        "Oversight",
+        "Company profile, what data is connected, and what that unlocks.",
+    ),
 )
 
 #: The same map read as "what does this take", used by the gate.

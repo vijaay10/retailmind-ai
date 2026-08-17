@@ -1,4 +1,4 @@
-"""Dependency providers (Backend design §6).
+"""Dependency providers.
 
 Request-scoped objects are assembled by a provider chain:
 
@@ -22,23 +22,29 @@ from app.core.config import AuthSettings
 from app.core.security import TokenSigner
 from app.domain.auth.entities import Principal
 from app.domain.auth.permissions import Permission
-from app.domain.shared.errors import AuthenticationError
+from app.domain.shared.errors import AuthenticationError, NotFoundError
 from app.infrastructure.db.repositories.auth import (
     AuthEventRepository,
     RefreshTokenRepository,
+    TenantRepository,
     UserRepository,
 )
 from app.infrastructure.db.repositories.insights import (
     AlertReadRepository,
     RecommendationReadRepository,
 )
+from app.infrastructure.db.repositories.outcomes import OutcomeRepository
 from app.infrastructure.db.repositories.recommendation_decisions import (
     RecommendationDecisionRepository,
 )
+from app.infrastructure.llm.gateway import LlmGateway
+from app.infrastructure.semantic.client import SemanticLayerClient
 from app.infrastructure.semantic.repository import AnalyticsRepository
+from app.infrastructure.semantic.tenancy import TenantWarehouseRegistry
 from app.services.analyst.service import BusinessAnalystService
 from app.services.analytics.service import AnalyticsService
 from app.services.auth.service import AuthService
+from app.services.calibration.service import CalibrationService
 from app.services.customers.service import CustomerIntelligenceService
 from app.services.dashboard.service import ExecutiveDashboardService
 from app.services.forecasting.service import ForecastingService
@@ -139,7 +145,7 @@ def requires(permission: Permission) -> Callable[[Principal], Principal]:
     Declaring the requirement on the route means unauthorized requests are
     rejected before the handler runs, and the requirement is visible in the
     generated OpenAPI description. Services still re-check independently
-    (Backend §9's two-layer rule).
+    (Backend's two-layer rule).
     """
 
     def _guard(principal: PrincipalDep) -> Principal:
@@ -152,15 +158,51 @@ def requires(permission: Permission) -> Callable[[Principal], Principal]:
 # ── Analytics ────────────────────────────────────────────────────────
 
 
-def get_analytics_service(request: Request) -> AnalyticsService:
-    """Analytics service over the process-wide semantic client and cache.
+def get_tenant_repository(session: SessionDep) -> TenantRepository:
+    """Not tenant-constructed like the others — its methods take the id
+    explicitly and the handler passes ``principal.tenant_id`` itself, since
+    a repository over the tenant table has no tenant to be scoped *to*."""
+    return TenantRepository(session)
 
-    Both are singletons: the client holds no per-request state, and a
-    per-request cache connection would defeat the pool.
+
+TenantRepositoryDep = Annotated[TenantRepository, Depends(get_tenant_repository)]
+
+
+async def get_tenant_semantic_client(
+    request: Request, principal: PrincipalDep, tenants: TenantRepositoryDep
+) -> SemanticLayerClient:
+    """The authenticated caller's own tenant's warehouse — never another's.
+
+    Prompt 12.5: this is the one place every analytics-touching dependency
+    now resolves its warehouse connection from, replacing the single
+    process-wide client every request used to share regardless of tenant.
+    `TenantWarehouseRegistry` (`app.state.warehouse_registry`) caches the
+    resolved client per tenant id so this costs one Postgres lookup per
+    request (the tenant row itself), not a warehouse file open — DuckDB
+    connections are opened per *query*, inside `SemanticLayerClient`, same
+    as before.
+    """
+    tenant = await tenants.get(principal.tenant_id)
+    if tenant is None:
+        raise NotFoundError("Tenant not found.")
+    registry: TenantWarehouseRegistry = request.app.state.warehouse_registry
+    return registry.client_for(tenant)
+
+
+TenantSemanticClientDep = Annotated[SemanticLayerClient, Depends(get_tenant_semantic_client)]
+
+
+def get_analytics_service(request: Request, client: TenantSemanticClientDep) -> AnalyticsService:
+    """Analytics service over the caller's own tenant's warehouse.
+
+    The cache is still process-wide (a per-request cache connection would
+    defeat the pool) — safe because `AnalyticsCache.key()` already embeds
+    `tenant_id`, so no two tenants can ever collide on one cache entry even
+    though they share the Redis instance.
     """
     return AnalyticsService(
         AnalyticsRepository(
-            client=request.app.state.semantic_client,
+            client=client,
             cache=request.app.state.analytics_cache,
         )
     )
@@ -169,20 +211,38 @@ def get_analytics_service(request: Request) -> AnalyticsService:
 AnalyticsServiceDep = Annotated[AnalyticsService, Depends(get_analytics_service)]
 
 
+def get_llm_gateway(request: Request) -> LlmGateway:
+    """Process-wide LLM gateway.
+
+    The gateway is a singleton: the provider holds no per-request state. Usage
+    tracking is request-scoped and attached by services that need it.
+    """
+    gateway: LlmGateway = request.app.state.llm_gateway
+    return gateway
+
+
+LlmGatewayDep = Annotated[LlmGateway, Depends(get_llm_gateway)]
+
+
 def get_dashboard_service(
-    request: Request,
     session: SessionDep,
     analytics: AnalyticsServiceDep,
+    semantic: TenantSemanticClientDep,
 ) -> ExecutiveDashboardService:
     """Executive dashboard service.
 
     Composes the analytics service (warehouse metrics) with OLTP read
     repositories (alerts, recommendations) — the two estates meet here, in the
-    service layer, rather than in a query that spans them.
+    service layer, rather than in a query that spans them. `semantic` used to
+    be read directly off `app.state` here, bypassing the per-tenant
+    resolution `AnalyticsServiceDep` already went through — same bug class
+    Prompt 12.5 was written to find (a boundary trusted for one call site,
+    quietly skipped at another). Now both come from the same tenant-resolved
+    dependency.
     """
     return ExecutiveDashboardService(
         analytics=analytics,
-        semantic=request.app.state.semantic_client,
+        semantic=semantic,
         alerts=AlertReadRepository(session),
         recommendations=RecommendationReadRepository(session),
     )
@@ -267,6 +327,24 @@ def get_recommendation_service(
 RecommendationServiceDep = Annotated[RecommendationService, Depends(get_recommendation_service)]
 
 
+def get_calibration_service(
+    principal: PrincipalDep,
+    session: SessionDep,
+) -> CalibrationService:
+    """Calibration service for recommendation outcome analysis.
+
+    Provides calibration metrics across generators, confidence bands, and
+    horizons. Read-only: learns from outcomes but does not automatically
+    change production recommendations.
+    """
+    return CalibrationService(
+        OutcomeRepository(session, principal.tenant_id),
+    )
+
+
+CalibrationServiceDep = Annotated[CalibrationService, Depends(get_calibration_service)]
+
+
 def get_nlq_service(
     analytics: AnalyticsServiceDep,
     rca: RcaServiceDep,
@@ -344,6 +422,7 @@ def get_analyst_service(
     forecasts: ForecastServiceDep,
     recommendations: RecommendationServiceDep,
     reports: ReportServiceDep,
+    llm_gateway: LlmGatewayDep,
 ) -> BusinessAnalystService:
     """The analyst, composed from every engine that can answer something.
 
@@ -351,6 +430,9 @@ def get_analyst_service(
     surface that owns the question, so an answer here is the same answer the
     corresponding endpoint gives. An assistant with its own implementation
     would eventually contradict the screen the user is looking at.
+
+    The LLM gateway enhances narration fluency while keeping all numbers
+    grounded in verified evidence from the analytical engines.
     """
     return BusinessAnalystService(
         analytics,
@@ -359,6 +441,7 @@ def get_analyst_service(
         forecasts=forecasts,
         recommendations=recommendations,
         reports=reports,
+        llm_gateway=llm_gateway,
     )
 
 

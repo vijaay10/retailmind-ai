@@ -1,4 +1,4 @@
-"""Reference seed — ships with the product, safe in every environment (DB §28 class 1).
+"""Reference seed — ships with the product, safe in every environment (DB class 1).
 
 Idempotent by construction: keyed upserts on business keys, re-runnable at
 every deploy. The role catalog is derived from the domain matrix

@@ -1,6 +1,6 @@
 """Tenant configuration: metric overlays, alert rules, channels, connectors, flags.
 
-The metric *registry* is code (versioned YAML, DB §37); these tables are the
+The metric *registry* is code (versioned YAML, DB); these tables are the
 tenant overlay on it (targets, sensitivity, enablement) — FR-P05 no-code config.
 """
 
@@ -29,7 +29,7 @@ class MetricConfig(Base, TenantScopedMixin, TimestampMixin):
 
     id: Mapped[uuid.UUID] = uuid_pk()
     metric_key: Mapped[str] = mapped_column(
-        comment="FK-by-convention into the code-defined registry; reconciled nightly (DB §23)"
+        comment="FK-by-convention into the code-defined registry; reconciled nightly (DB)"
     )
     display_name: Mapped[str]
     target_value: Mapped[float | None] = mapped_column(comment="Plan/target for vs-plan KPIs")
@@ -42,7 +42,7 @@ class MetricConfig(Base, TenantScopedMixin, TimestampMixin):
 
 
 class AlertRule(Base, TimestampMixin):
-    """Detector binding for one metric config (CASCADE: meaningless without it, DB §21 R2)."""
+    """Detector binding for one metric config (CASCADE: meaningless without it, DB R2)."""
 
     __tablename__ = "alert_rule"
     __table_args__ = (
@@ -59,17 +59,24 @@ class AlertRule(Base, TimestampMixin):
         server_default=text("'{}'::jsonb"),
         comment="Detector parameters (z-threshold, static bounds…); schema owned by alert engine",
     )
-    min_severity_notify: Mapped[str] = mapped_column(server_default=text("'warn'"))
+    # 'medium' — the closest equivalent under the current 5-tier Severity
+    # scale (info/low/medium/high/critical). The old default, 'warn', was a
+    # leftover from a 3-tier (info/warn/critical) scale and violated this
+    # table's own ck_alert_rule_min_severity_notify_valid constraint on any
+    # insert that relied on the column default — never caught before because
+    # the seed scripts had never actually been run against a fresh database
+    # (found running the Prompt 10.5 migration round-trip test).
+    min_severity_notify: Mapped[str] = mapped_column(server_default=text("'medium'"))
     enabled: Mapped[bool] = mapped_column(server_default=text("true"))
     retired_at: Mapped[str | None] = mapped_column(
-        comment="Soft retirement — alerts are history; rules are never hard-deleted (DB §21 R3)"
+        comment="Soft retirement — alerts are history; rules are never hard-deleted (DB R3)"
     )
 
     metric_config: Mapped[MetricConfig] = relationship(back_populates="alert_rules")
 
 
 class ChannelPref(Base, TimestampMixin):
-    """Per-user notification preference matrix (PRD §32: per-type, never all-or-nothing)."""
+    """Per-user notification preference matrix (PRD: per-type, never all-or-nothing)."""
 
     __tablename__ = "channel_pref"
     __table_args__ = (UniqueConstraint("user_id", "channel", "event_type"),)
@@ -84,7 +91,7 @@ class ChannelPref(Base, TimestampMixin):
 
 
 class ConnectorConfig(Base, TenantScopedMixin, TimestampMixin):
-    """Source registry entry (ETL §2). Credentials live in the secrets store, never here."""
+    """Source registry entry (ETL). Credentials live in the secrets store, never here."""
 
     __tablename__ = "connector_config"
     __table_args__ = (UniqueConstraint("tenant_id", "source_key"),)
@@ -97,12 +104,12 @@ class ConnectorConfig(Base, TenantScopedMixin, TimestampMixin):
     params: Mapped[JSONDict] = mapped_column(
         server_default=text("'{}'::jsonb"), comment="Non-secret connector parameters"
     )
-    secret_ref: Mapped[str | None] = mapped_column(comment="Name in the secrets store (DevOps §4)")
+    secret_ref: Mapped[str | None] = mapped_column(comment="Name in the secrets store (DevOps)")
     enabled: Mapped[bool] = mapped_column(server_default=text("true"))
 
 
 class FeatureFlagState(Base, TimestampMixin):
-    """Per-tenant feature flags — release-independent kill switches (DevOps §22)."""
+    """Per-tenant feature flags — release-independent kill switches (DevOps)."""
 
     __tablename__ = "feature_flag_state"
     __table_args__ = (UniqueConstraint("tenant_id", "flag_key"),)

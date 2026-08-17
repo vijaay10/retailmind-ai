@@ -38,8 +38,12 @@ class AlertKind(StrEnum):
 
 class Severity(StrEnum):
     INFO = "info"
-    WARN = "warn"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
     CRITICAL = "critical"
+    # Backwards compatibility
+    WARN = "medium"  # Map WARN to MEDIUM for migration
 
 
 #: Event types written to the notification ledger, matching the schema's

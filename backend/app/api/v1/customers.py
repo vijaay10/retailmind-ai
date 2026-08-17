@@ -1,4 +1,4 @@
-"""Customer intelligence endpoints (Analytics §2).
+"""Customer intelligence endpoints (Analytics).
 
 Eight surfaces over one population: segmentation, RFM grid, lifetime value,
 retention cohorts, repeat purchase, journey, churn risk, and VIPs.

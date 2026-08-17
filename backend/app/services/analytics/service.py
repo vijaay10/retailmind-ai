@@ -1,13 +1,13 @@
 """Analytics service — one use-case per question the product asks.
 
 Each method authorizes first, then delegates to the repository. Authorization
-is checked here as well as on the route (Backend design §9's two-layer rule):
+is checked here as well as on the route (Backend design's two-layer rule):
 a service invoked from a worker, a script, or a future endpoint still enforces
 its own rules.
 
 The `analytics.<module>.read` permissions are what actually separate the roles
 — a Marketing user and a Finance user share most action verbs but see
-different modules (Backend §10).
+different modules (Backend).
 """
 
 from dataclasses import dataclass

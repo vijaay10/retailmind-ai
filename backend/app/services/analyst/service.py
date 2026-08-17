@@ -36,6 +36,7 @@ import structlog
 
 from app.domain.auth.entities import Principal
 from app.domain.auth.permissions import Permission
+from app.infrastructure.llm.gateway import LlmGateway
 from app.services.analyst import comparison, glossary
 from app.services.analyst.contracts import (
     AnalystAnswer,
@@ -47,6 +48,7 @@ from app.services.analyst.contracts import (
     Statement,
     Turn,
 )
+from app.services.analyst.narrator import AnalystNarrator
 from app.services.analytics.service import AnalyticsService
 from app.services.forecasting.service import ForecastingService
 from app.services.nlq.contracts import UnsupportedQuestionError
@@ -110,6 +112,7 @@ class BusinessAnalystService:
         forecasts: ForecastingService | None = None,
         recommendations: RecommendationService | None = None,
         reports: ReportComposer | None = None,
+        llm_gateway: LlmGateway | None = None,
     ) -> None:
         self._analytics = analytics
         self._nlq = nlq
@@ -117,6 +120,7 @@ class BusinessAnalystService:
         self._forecasts = forecasts
         self._recommendations = recommendations
         self._reports = reports
+        self._narrator = AnalystNarrator(llm_gateway) if llm_gateway else None
 
     async def ask(
         self,
@@ -417,7 +421,8 @@ class BusinessAnalystService:
         arithmetic = [f for f in findings if f["evidence_tier"] == "arithmetic"]
         weaker = [f for f in findings if f["evidence_tier"] != "arithmetic"]
 
-        return AnalystAnswer(
+        # Build deterministic answer first
+        answer = AnalystAnswer(
             question=question,
             capability=Capability.INVESTIGATE,
             headline=(
@@ -456,6 +461,35 @@ class BusinessAnalystService:
             data=payload,
             meta={"subject": findings[0]["subject"]},
         )
+
+        # Enhance with LLM narration if available
+        if self._narrator:
+            try:
+                enhanced_headline = await self._narrator.narrate_investigation(answer)
+                # Replace headline with LLM-generated narration
+                # All facts, inferences, caveats remain unchanged
+                answer = AnalystAnswer(
+                    question=answer.question,
+                    capability=answer.capability,
+                    headline=enhanced_headline,
+                    facts=answer.facts,
+                    inferences=answer.inferences,
+                    checked=answer.checked,
+                    not_checked=answer.not_checked,
+                    caveats=answer.caveats,
+                    follow_ups=answer.follow_ups,
+                    data=answer.data,
+                    meta=answer.meta,
+                )
+            except Exception as error:
+                log.warning(
+                    "narrator.failed_in_investigate",
+                    error=str(error),
+                    error_type=type(error).__name__,
+                )
+                # Fall back to deterministic answer
+
+        return answer
 
     # ── 4. Recommend ─────────────────────────────────────────────────
 
@@ -614,7 +648,8 @@ class BusinessAnalystService:
                 f"{result.scale:.3f} to compare per-day.",
             )
 
-        return AnalystAnswer(
+        # Build deterministic answer first
+        answer = AnalystAnswer(
             question=question,
             capability=Capability.COMPARE,
             headline=result.describe(),
@@ -638,6 +673,35 @@ class BusinessAnalystService:
             data=result.as_dict(),
             meta={"subject": "net_revenue"},
         )
+
+        # Enhance with LLM narration if available
+        if self._narrator:
+            try:
+                enhanced_headline = await self._narrator.narrate_comparison(answer)
+                # Replace headline with LLM-generated narration
+                # All facts, inferences, caveats remain unchanged
+                answer = AnalystAnswer(
+                    question=answer.question,
+                    capability=answer.capability,
+                    headline=enhanced_headline,
+                    facts=answer.facts,
+                    inferences=answer.inferences,
+                    checked=answer.checked,
+                    not_checked=answer.not_checked,
+                    caveats=answer.caveats,
+                    follow_ups=answer.follow_ups,
+                    data=answer.data,
+                    meta=answer.meta,
+                )
+            except Exception as error:
+                log.warning(
+                    "narrator.failed_in_compare",
+                    error=str(error),
+                    error_type=type(error).__name__,
+                )
+                # Fall back to deterministic answer
+
+        return answer
 
     # ── 7. Explain the forecast ──────────────────────────────────────
 

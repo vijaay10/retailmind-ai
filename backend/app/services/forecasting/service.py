@@ -1,4 +1,4 @@
-"""Forecast serving (Analytics M7, ARCH §28).
+"""Forecast serving (Analytics M7,).
 
 Reads forecasts the training job published; never fits a model. That split is
 deliberate and worth stating, because the obvious alternative — score on

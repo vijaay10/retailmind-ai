@@ -1,4 +1,4 @@
-"""Exception → RFC 7807 mapping (Backend design §12, §19).
+"""Exception → RFC 7807 mapping (Backend design,).
 
 One registry decides the HTTP status, ``type`` URI, and public wording for
 every domain error. Routers raise domain errors and stay out of the HTTP
@@ -114,7 +114,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         if isinstance(exc, DependencyError) and exc.retryable:
             headers["Retry-After"] = "30"
 
-        # Authorization denials are audited as security signal (Backend §9);
+        # Authorization denials are audited as security signal (Backend);
         # authentication failures are expected noise and logged at info.
         if isinstance(exc, AuthorizationError):
             log.warning(
@@ -139,7 +139,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         """Pydantic 422s reshaped into the platform's single error format.
 
         Field errors are surfaced as a list so forms can bind them; they are
-        client bugs, so they are counted but never logged at ERROR (§14).
+        client bugs, so they are counted but never logged at ERROR.
         """
         errors = [
             {

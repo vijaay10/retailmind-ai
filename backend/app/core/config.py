@@ -2,7 +2,7 @@
 
 Scaffold scope: enough to boot. The full layered model (per-area nested
 settings, *_FILE secret variants, fail-fast missing-settings table) lands in S1
-per Backend design §16 / DevOps design §3.
+ / DevOps design.
 """
 
 from pathlib import Path
@@ -40,7 +40,7 @@ class Settings(BaseSettings):
 class AuthSettings(BaseSettings):
     """RM_AUTH_* — token lifetimes, signing keys, cookie behaviour.
 
-    Secrets follow the ``*_FILE`` convention (DevOps §4): the platform mounts
+    Secrets follow the ``*_FILE`` convention (DevOps): the platform mounts
     the key and we read it, so the value never appears in process env or logs.
     """
 
@@ -84,7 +84,7 @@ class AuthSettings(BaseSettings):
 
 
 class DatabaseSettings(BaseSettings):
-    """RM_DB_* — the app OLTP database (defaults are dev-safe, DevOps §3)."""
+    """RM_DB_* — the app OLTP database (defaults are dev-safe,)."""
 
     model_config = SettingsConfigDict(
         env_prefix="RM_DB_",
@@ -134,13 +134,20 @@ class WarehouseSettings(BaseSettings):
     duckdb_path: str = ".local/retailmind.duckdb"
     semantic_schema: str = "analytics_semantic"
     core_schema: str = "analytics_analytics"
+    # Prompt 12.5: each tenant's warehouse is a separate DuckDB file under
+    # this root, named `{tenant.slug}.duckdb`, unless `Tenant.warehouse_path`
+    # overrides it (the demo tenant does, pointing at `duckdb_path` above —
+    # see migration 0008_tenant_warehouse_isolation). A missing file for an
+    # unprovisioned tenant surfaces as the existing, already-honest
+    # `DependencyError("warehouse")` — no new error path needed.
+    root: str = ".local/tenants"
 
 
 class CacheSettings(BaseSettings):
     """RM_REDIS_* — the analytics result cache.
 
     An unset URL disables caching rather than failing: reads pass through to
-    the warehouse and the product stays up, slower (Backend §20).
+    the warehouse and the product stays up, slower (Backend).
     """
 
     model_config = SettingsConfigDict(
@@ -152,3 +159,64 @@ class CacheSettings(BaseSettings):
 
     cache_url: str | None = None
     ttl_seconds: int = 86_400
+
+
+class LLMSettings(BaseSettings):
+    """RM_LLM_* — external AI model configuration.
+
+    The LLM gateway provides structured access to AI models for interpretation,
+    explanation, and reasoning over verified evidence. It does NOT provide
+    direct data access or generate business numbers.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="RM_LLM_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    # Provider selection
+    provider: str = "anthropic"
+    """LLM provider: anthropic | openai | mock"""
+
+    mock: bool = False
+    """Use mock provider (no external API calls, deterministic responses)"""
+
+    # Anthropic configuration
+    anthropic_api_key: str | None = None
+    anthropic_api_key_file: str | None = None
+    anthropic_model: str = "claude-sonnet-4-5-20250929"
+
+    # Request configuration
+    timeout_seconds: int = 60
+    """Request timeout in seconds"""
+
+    max_tokens: int = 2048
+    """Default max tokens per response"""
+
+    max_retries: int = 3
+    """Max retries for transient errors (429, 5xx, timeouts)"""
+
+    temperature: float = 0.7
+    """Default temperature (0.0-1.0)"""
+
+    # Safety
+    scrub_pii: bool = True
+    """Scrub PII from prompts before sending to external API"""
+
+    # Cost control
+    daily_token_budget: int = 1_000_000
+    """Daily token budget (input + output combined)"""
+
+    max_cost_per_request_usd: float = 1.0
+    """Maximum cost per single request in USD"""
+
+    def model_post_init(self, __context: object) -> None:
+        """Resolve *_FILE indirection for API keys."""
+        if self.anthropic_api_key is None and self.anthropic_api_key_file:
+            self.anthropic_api_key = read_secret(self.anthropic_api_key_file)
+
+        # Use mock mode if no API key configured
+        if self.provider == "anthropic" and not self.anthropic_api_key and not self.mock:
+            self.mock = True

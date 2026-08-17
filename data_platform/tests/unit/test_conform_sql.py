@@ -143,7 +143,7 @@ def test_whitespace_and_sentinel_nulls_are_canonicalized(conn: duckdb.DuckDBPyCo
     assert result["note"] is None
 
 
-# ── Missing-value policy (ETL §9) ────────────────────────────────────
+# ── Missing-value policy (ETL) ────────────────────────────────────
 
 
 def test_missing_business_key_is_rejected(conn: duckdb.DuckDBPyConnection) -> None:
@@ -228,7 +228,7 @@ def test_returns_are_kept_as_negative_quantities(conn: duckdb.DuckDBPyConnection
     assert result["qty"] == -2
 
 
-# ── Duplicate detection (ETL §10) ────────────────────────────────────
+# ── Duplicate detection (ETL) ────────────────────────────────────
 
 
 def test_natural_key_duplicate_resolved_by_tiebreaker(conn: duckdb.DuckDBPyConnection) -> None:
@@ -316,7 +316,7 @@ def test_rejected_rows_do_not_participate_in_dedup(conn: duckdb.DuckDBPyConnecti
     assert result["note"] == "good"
 
 
-# ── Date handling (ETL §16) ──────────────────────────────────────────
+# ── Date handling (ETL) ──────────────────────────────────────────
 
 
 def test_business_date_is_derived_in_the_stores_timezone(
@@ -347,7 +347,7 @@ def test_ambiguous_date_formats_are_refused_not_guessed(
     assert _rejects(conn, [row])[0]["_reject_reason"] == REASON_BAD_DATE
 
 
-# ── Currency standardization (ETL §15) ───────────────────────────────
+# ── Currency standardization (ETL) ───────────────────────────────
 
 
 def _with_fx(conn: duckdb.DuckDBPyConnection, rows: list[tuple[str, ...]]) -> list[dict]:

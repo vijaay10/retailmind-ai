@@ -1,6 +1,6 @@
 """Analytics repository — translates domain requests into governed queries.
 
-Sits between services and the semantic client (Backend design §4). Services
+Sits between services and the semantic client. Services
 express intent in registry terms ("net revenue by region for this period");
 this layer resolves those names to columns and expressions, applies the cache,
 and hands back rows.
@@ -157,7 +157,7 @@ class AnalyticsRepository:
 
         # Every grouping column becomes a tiebreaker, in order. Two reasons:
         # pagination stays stable when rows share the primary sort value
-        # (Backend §22), and multi-dimensional results arrive fully ordered —
+        # (Backend), and multi-dimensional results arrive fully ordered —
         # a retention curve sorted by cohort but not by week is a scatter of
         # points the client has to re-sort before it can draw a line.
         sorted_columns = {column for column, _ in order_by}

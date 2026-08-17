@@ -1,4 +1,4 @@
-"""Authentication use cases (Backend design §5, §8).
+"""Authentication use cases (Backend design,).
 
 Every method here is a complete unit of work: it validates, mutates, writes
 its security-ledger entry, and returns domain objects. HTTP concerns (cookies,
@@ -266,7 +266,7 @@ class AuthService:
         so the authoritative record is loaded and ``token_version`` compared.
         A mismatch means the token was invalidated after issuance.
 
-        TODO(S3): cache this lookup in Redis with a 60s TTL (Backend §8's
+        TODO(S3): cache this lookup in Redis with a 60s TTL (Backend's
         bounded-staleness contract). Correct first, fast second.
         """
         user = await self._users.get_by_id(claims_principal.user_id)

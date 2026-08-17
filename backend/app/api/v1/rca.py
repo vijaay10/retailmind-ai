@@ -1,4 +1,4 @@
-"""Root cause analysis endpoints (Analytics §9).
+"""Root cause analysis endpoints (Analytics).
 
 One endpoint, because root-cause analysis is one question: something moved,
 and the answer is a ranked set of candidate explanations with the evidence

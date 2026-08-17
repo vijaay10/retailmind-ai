@@ -1,6 +1,6 @@
 """Sample data seed — the Northwind Threads demo tenant (dev/demo/staging ONLY).
 
-Mirrors the Database design §29 sample records so every layer of the demo tells
+Mirrors the Database design sample records so every layer of the demo tells
 one coherent story: the SW Outerwear stockout anomaly, its RCA, and the reorder
 recommendation it produced.
 
@@ -149,7 +149,7 @@ async def seed_sample(session: AsyncSession) -> None:
     # anything that carries the FK — insert ordering is ours to guarantee here.
     await session.flush()
 
-    # ── The MVP demo anomaly (DB §29 sample records) ────────────────
+    # ── The MVP demo anomaly (DB sample records) ────────────────
     alert = Alert(
         tenant_id=tenant.id,
         rule_id=rules_by_metric["net_revenue"].id,
@@ -230,7 +230,7 @@ async def seed_sample(session: AsyncSession) -> None:
     session.add(rca)
     await session.flush()  # ids are DB-generated; feed cards below reference rca.id
 
-    # ── The reorder recommendation it produced (DB §29) ─────────────
+    # ── The reorder recommendation it produced (DB) ─────────────
     subject = {
         "sku": "OW-1042",
         "store_id": "S2117",
@@ -366,7 +366,7 @@ async def seed_sample(session: AsyncSession) -> None:
 
 async def main() -> None:
     if Settings().env == "prod":
-        raise SystemExit("sample seed refuses to run in prod (DB §28 environment matrix)")
+        raise SystemExit("sample seed refuses to run in prod (DB environment matrix)")
     engine = create_engine()
     factory = create_session_factory(engine)
     async with session_scope(factory) as session:

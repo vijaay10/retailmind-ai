@@ -1,4 +1,4 @@
-"""The decision-loop ledger: recommendations, feedback, outcomes (DB §40).
+"""The decision-loop ledger: recommendations, feedback, outcomes (DB).
 
 Evidence is pointers (query ids + snapshot), never embedded copies — one source
 of truth. The dedup rule ("no simultaneous markdown + reorder per subject") is
@@ -19,9 +19,12 @@ from app.infrastructure.db.models.base import (
     uuid_pk,
 )
 from app.infrastructure.db.models.enums import (
+    BaselineMethod,
     Confidence,
     DecisionAction,
     DismissReason,
+    OutcomeStatus,
+    RecommendationCategory,
     RecommendationStatus,
     RecommendationType,
 )
@@ -30,9 +33,9 @@ from app.infrastructure.db.models.enums import (
 class Recommendation(Base, TenantScopedMixin):
     __tablename__ = "recommendation"
     __table_args__ = (
-        # Inbox hot path (DB §13 ix_rec_inbox)
+        # Inbox hot path (DB ix_rec_inbox)
         Index("ix_rec_inbox", "tenant_id", "status", "type", "expires_at"),
-        # One active rec per subject — structural dedup (DB §40)
+        # One active rec per subject — structural dedup (DB)
         Index(
             "uq_rec_active_dedup",
             "tenant_id",
@@ -43,10 +46,21 @@ class Recommendation(Base, TenantScopedMixin):
         enum_check("type", RecommendationType),
         enum_check("status", RecommendationStatus),
         enum_check("confidence", Confidence),
+        enum_check("category", RecommendationCategory),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     type: Mapped[str]
+    category: Mapped[str | None] = mapped_column(
+        comment=(
+            "inventory | pricing | promotion | store | marketing | customer | "
+            "supplier — which generator produced this recommendation. Distinct "
+            "from `type` (reorder/markdown/promo/assortment, the kind of "
+            "action). Nullable: rows written before this column existed have "
+            "none, and the calibration API's generator-filtering treats an "
+            "unset category the same as no match rather than an error."
+        )
+    )
     subject: Mapped[JSONDict] = mapped_column(
         comment="Typed per rec-type, e.g. reorder: {sku, store_id, suggested_qty, order_by_date}"
     )
@@ -54,14 +68,14 @@ class Recommendation(Base, TenantScopedMixin):
     expected_impact: Mapped[JSONDict] = mapped_column(
         comment="{metric, value_usd, method, confidence} — method is mandatory (honesty rule)"
     )
-    rationale: Mapped[str | None] = mapped_column(comment="Grounded LLM narration (AI §2)")
+    rationale: Mapped[str | None] = mapped_column(comment="Grounded LLM narration (AI)")
     rule_id: Mapped[str] = mapped_column(comment="Which eligibility rule fired (auditable)")
     rule_version: Mapped[str]
     model_run_id: Mapped[str | None] = mapped_column(
         comment="Forecast/elasticity run that fed quantities (provenance)"
     )
     score: Mapped[float] = mapped_column(
-        Numeric(12, 2), comment="impact × confidence × urgency decay (ARCH §26 ranking)"
+        Numeric(12, 2), comment="impact × confidence × urgency decay (ARCH ranking)"
     )
     status: Mapped[str] = mapped_column(server_default=text("'proposed'"))
     confidence: Mapped[str]
@@ -102,27 +116,118 @@ class RecommendationFeedback(Base):
 
 
 class RecommendationOutcome(Base):
-    """Post-hoc measurement — ships at v1, populated by the Horizon-1 job (DB §40).
+    """Post-hoc measurement tracking — the feedback loop for calibration.
 
-    The substrate for 'did accepted reorders actually prevent stockouts' and the
-    calibration loop (AI §10): expected vs. realized, by rec type.
+    Tracks the full lifecycle of measuring whether an accepted recommendation
+    actually delivered its expected impact. Each outcome represents one horizon
+    (H+1, H+7, H+14, H+30) for one decision.
+
+    The measurement compares observed results against a defensible baseline
+    (comparable period, pre-decision trend, peer baseline, or forecast), and
+    explicitly documents limitations rather than claiming causal impact we
+    cannot support.
     """
 
     __tablename__ = "recommendation_outcome"
+    __table_args__ = (
+        enum_check("status", OutcomeStatus),
+        enum_check("baseline_method", BaselineMethod),
+        enum_check("measurement_confidence", Confidence),
+        Index(
+            "ix_outcome_pending_measurement",
+            "status",
+            "observation_window_end",
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     recommendation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("recommendation.id", ondelete="CASCADE"), index=True
     )
-    measured_at: Mapped[datetime]
-    window_days: Mapped[int]
-    outcome_metrics: Mapped[JSONDict] = mapped_column(
-        comment="e.g. {stockout_occurred: bool, realized_units, realized_margin_delta}"
+
+    # Legacy fields (kept for backward compatibility)
+    measured_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    window_days: Mapped[int | None] = mapped_column(nullable=True)
+    outcome_metrics: Mapped[JSONDict | None] = mapped_column(
+        nullable=True,
+        comment="e.g. {stockout_occurred: bool, realized_units, realized_margin_delta}",
     )
-    method: Mapped[str] = mapped_column(
-        comment="How it was measured — outcomes are explainable too"
+    method: Mapped[str | None] = mapped_column(
+        nullable=True, comment="How it was measured — outcomes are explainable too"
     )
-    vs_expected_ratio: Mapped[float | None] = mapped_column(Numeric(8, 4))
+    vs_expected_ratio: Mapped[float | None] = mapped_column(Numeric(8, 4), nullable=True)
+
+    # Lifecycle status
+    status: Mapped[str | None] = mapped_column(
+        comment=(
+            "pending | measuring | measured | failed | insufficient_data — "
+            "measurement lifecycle status"
+        )
+    )
+
+    # Baseline calculation
+    baseline_method: Mapped[str | None] = mapped_column(
+        comment=(
+            "comparable_period | pre_decision | peer_baseline | forecast_baseline — "
+            "how the counterfactual was calculated"
+        )
+    )
+    baseline_window_start: Mapped[datetime | None] = mapped_column(
+        comment="Start of baseline observation period"
+    )
+    baseline_window_end: Mapped[datetime | None] = mapped_column(
+        comment="End of baseline observation period"
+    )
+    observation_window_start: Mapped[datetime | None] = mapped_column(
+        comment="Start of post-decision measurement period"
+    )
+    observation_window_end: Mapped[datetime | None] = mapped_column(
+        comment="End of post-decision measurement period"
+    )
+
+    # Realized impact metrics
+    baseline_value: Mapped[float | None] = mapped_column(
+        Numeric(14, 2), comment="Baseline metric value (counterfactual)"
+    )
+    observed_value: Mapped[float | None] = mapped_column(
+        Numeric(14, 2), comment="Observed metric value in the measurement window"
+    )
+    realized_impact: Mapped[float | None] = mapped_column(
+        Numeric(14, 2), comment="Observed minus baseline — the measured effect"
+    )
+    expected_impact: Mapped[float | None] = mapped_column(
+        Numeric(14, 2), comment="Expected impact from recommendation (snapshot at decision)"
+    )
+    absolute_error: Mapped[float | None] = mapped_column(
+        Numeric(14, 2), comment="abs(realized - expected) — forecast accuracy"
+    )
+    realization_ratio: Mapped[float | None] = mapped_column(
+        Numeric(8, 4), comment="realized / expected — 1.0 = perfect calibration"
+    )
+    direction_correct: Mapped[bool | None] = mapped_column(
+        comment="Did the outcome move in the expected direction?"
+    )
+
+    # Measurement quality
+    measurement_confidence: Mapped[str | None] = mapped_column(
+        comment="low | medium | high — confidence in this measurement"
+    )
+    limitations: Mapped[str | None] = mapped_column(
+        comment=(
+            "Known measurement limitations, e.g., 'short observation window', "
+            "'confounding event detected'"
+        )
+    )
+
+    # Error tracking
+    error_message: Mapped[str | None] = mapped_column(comment="Error if status=failed")
+    measurement_attempts: Mapped[int] = mapped_column(
+        server_default=text("0"), comment="Number of measurement attempts (for retry logic)"
+    )
+    last_attempt_at: Mapped[datetime | None] = mapped_column(
+        comment="When measurement was last attempted"
+    )
 
     recommendation: Mapped[Recommendation] = relationship(back_populates="outcomes")
 

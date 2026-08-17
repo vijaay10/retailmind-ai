@@ -32,6 +32,12 @@ services:
       RM_DB_NAME: ${RM_DB_NAME:-retailmind_app}
       RM_DB_USER: ${RM_DB_USER:-api_rw}
       RM_DB_PASSWORD: ${RM_DB_PASSWORD:-dev-only-password}
+      # Must match the `api` service below: migration
+      # 0008_tenant_warehouse_isolation backfills the demo tenant's
+      # `warehouse_path` from whatever this resolves to *at migrate time* —
+      # if `migrate` and `api` ever disagree about this path, the demo
+      # tenant's warehouse resolution silently points at the wrong file.
+      RM_WAREHOUSE_DUCKDB_PATH: /data/warehouse/retailmind.duckdb
     networks: [app]
     depends_on:
       postgres:

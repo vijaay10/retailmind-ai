@@ -28,6 +28,12 @@ airflow = [
     # this package; this extra exists for local DAG-parse testing only.
     "apache-airflow>=2.10",
 ]
+dagster = [
+    "dagster>=1.8",
+    "dagster-webserver>=1.8",
+    "dagster-dbt>=0.24",
+    "dagster-duckdb>=0.24",
+]
 generators = [
     "numpy>=2.1",
     "pandas>=2.2",          # synthetic retailer generator only — pipeline code is arrow-native

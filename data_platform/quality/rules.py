@@ -1,4 +1,4 @@
-"""Quality-rule catalog (ETL design §17).
+"""Quality-rule catalog.
 
 Every check the gate can apply, with a stable id, a severity, and the reason
 it exists. Ids appear in reject files, quarantine alerts, DQ scores, and the
@@ -17,7 +17,7 @@ Severity is the whole design:
     the digest.
 
 The line between them is the design's central distinction: *row problems are
-data, batch problems are incidents* (ETL §21).
+data, batch problems are incidents* (ETL).
 """
 
 from dataclasses import dataclass

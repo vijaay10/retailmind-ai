@@ -1,4 +1,4 @@
-"""Analytics endpoints — six domains, one governed path (Backend design §13).
+"""Analytics endpoints — six domains, one governed path.
 
 Every domain exposes the same three verbs, because every analytics question a
 dashboard asks is one of them:

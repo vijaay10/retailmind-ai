@@ -2,7 +2,7 @@
 
 These rows are *product state*, not operator logs: the pipeline-health screen,
 the quarantine workflow, and the report's data-trust appendix all read them
-(ETL §19–20, DB §36). Operator logs go to the log stack; these go to tables.
+(ETL–20, DB). Operator logs go to the log stack; these go to tables.
 
 Deliberately written with parameterized SQL against the shared tables rather
 than by importing the backend's ORM models. The two packages ship

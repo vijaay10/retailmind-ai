@@ -80,7 +80,7 @@ PROMOS = ["", "", "SUMMER25", "BOGO-OW", "CLEAR-FW"]
 CUSTOMERS_PER_DAILY_LINE = 11
 
 #: Share of lines that carry no loyalty id at all. Guest checkout is left in
-#: deliberately: the identification rate is itself a reported KPI (Analytics §2).
+#: deliberately: the identification rate is itself a reported KPI (Analytics).
 IDENTIFIED_SHARE = 0.72
 
 

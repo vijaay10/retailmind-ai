@@ -1,4 +1,4 @@
-"""Bronze landing — write data, then commit with the manifest (ETL design §3).
+"""Bronze landing — write data, then commit with the manifest.
 
 The commit protocol is the important part. Data files are written first, then
 ``manifest.json``. Downstream only ever reads partitions that have one, so a
@@ -8,7 +8,7 @@ needing transactional storage.
 
 Rejected rows land beside the data in ``_rejects/``, keeping their original
 text and a machine-readable reason. They are data to triage, never log lines
-to grep (ETL §23).
+to grep (ETL).
 """
 
 # ruff: noqa: S608 — SQL is composed from schema identifiers validated at

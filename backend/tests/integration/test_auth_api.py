@@ -251,7 +251,7 @@ async def test_security_headers_and_request_id_are_present(client: AsyncClient) 
 
 
 async def test_inbound_request_id_is_propagated(client: AsyncClient) -> None:
-    """Correlation ids from the edge must survive the hop (DevOps §7)."""
+    """Correlation ids from the edge must survive the hop (DevOps)."""
     response = await client.get("/health", headers={"X-Request-ID": "edge-abc-123"})
     assert response.headers["x-request-id"] == "edge-abc-123"
 

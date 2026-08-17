@@ -4,7 +4,7 @@ Revision ID: 0002_enterprise_roles
 Revises: 0001_genesis
 
 The permission model does not change — roles have always resolved to
-permission verbs (Backend §9), which is exactly what makes this migration a
+permission verbs (Backend), which is exactly what makes this migration a
 data-and-constraint change rather than an authorization rewrite.
 
 Mapping of existing grants (ids are preserved so ``user_role`` rows need no

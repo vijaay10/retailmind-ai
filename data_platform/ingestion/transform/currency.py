@@ -1,4 +1,4 @@
-"""Currency standardization (ETL design §15).
+"""Currency standardization.
 
 Three rules, each with a reason:
 

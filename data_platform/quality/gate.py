@@ -1,4 +1,4 @@
-"""The validation gate — where bad batches stop (ETL design §8, §18).
+"""The validation gate — where bad batches stop (ETL design,).
 
 Checks run cheapest-first and short-circuit on the first blocking failure:
 there is no value in computing distribution drift for a batch whose schema is
@@ -89,7 +89,7 @@ def volume_band(
 
     Uses median and MAD rather than mean and standard deviation: retail volume
     history contains promotions and outages, and a single Black Friday would
-    drag a mean-based band wide enough to accept anything (ETL §8).
+    drag a mean-based band wide enough to accept anything (ETL).
 
     Returns None until enough history exists to say anything meaningful —
     refusing to judge is better than judging on two data points.

@@ -11,8 +11,15 @@ global:
     env: prod
     service: retailmind
 
+# Alert routing: send evaluated alerts to Alertmanager.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
 rule_files:
   - /etc/prometheus/alerts.yml
+  - /etc/prometheus/recording-rules.yml
 
 scrape_configs:
   - job_name: api

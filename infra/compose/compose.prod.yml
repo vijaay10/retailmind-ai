@@ -298,6 +298,45 @@ services:
       driver: json-file
       options: {max-size: "10m", max-file: "2"}
 
+  # ── Backups ─────────────────────────────────────────────────────────
+
+  backup:
+    image: postgres:16
+    # Runs daily at 02:00 UTC via cron. Does not start with `up` — the profile
+    # keeps it out of the default startup, and crond runs it on schedule.
+    profiles: [backup]
+    command:
+      - sh
+      - -c
+      - |
+        # Install cron if not present (alpine-based postgres image)
+        apk add --no-cache dcron
+        # Write crontab: daily backup at 02:00 UTC
+        echo "0 2 * * * /scripts/backup-postgres.sh /backups >> /var/log/backup.log 2>&1" | crontab -
+        # Run crond in foreground
+        crond -f -l 2
+    environment:
+      RM_DB_HOST: postgres
+      RM_DB_NAME: ${RM_DB_NAME:?set RM_DB_NAME}
+      RM_DB_USER: ${RM_DB_USER:?set RM_DB_USER}
+      PGPASSWORD_FILE: /run/secrets/db_password
+      RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+    secrets: [db_password]
+    volumes:
+      - ../../scripts/backup-postgres.sh:/scripts/backup-postgres.sh:ro
+      - backup_data:/backups
+    networks: [app]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "2"}
+    deploy:
+      resources:
+        limits: {memory: 256M, cpus: "0.25"}
+
   # ── Monitoring ──────────────────────────────────────────────────────
 
   prometheus:
@@ -305,6 +344,7 @@ services:
     volumes:
       - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ../monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ../monitoring/recording-rules.yml:/etc/prometheus/recording-rules.yml:ro
       - prometheus_data:/prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
@@ -313,6 +353,7 @@ services:
       - --web.enable-lifecycle
     networks: [app]
     ports: !reset null   # reachable through the edge or an SSH tunnel, not publicly
+    depends_on: [alertmanager]
     restart: unless-stopped
     logging:
       driver: json-file
@@ -320,6 +361,37 @@ services:
     deploy:
       resources:
         limits: {memory: 768M, cpus: "0.5"}
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    volumes:
+      - ../monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.external-url=${RM_ALERTMANAGER_URL:-http://localhost:9093}
+    environment:
+      RM_DOMAIN: ${RM_DOMAIN:-example.com}
+      RM_SMTP_HOST: ${RM_SMTP_HOST:-}
+      RM_SMTP_USER: ${RM_SMTP_USER:-}
+      RM_ALERT_EMAIL: ${RM_ALERT_EMAIL:-ops@example.com}
+      RM_ALERT_EMAIL_CRITICAL: ${RM_ALERT_EMAIL_CRITICAL:-oncall@example.com}
+      RM_ALERT_EMAIL_DBA: ${RM_ALERT_EMAIL_DBA:-dba@example.com}
+      RM_ALERT_EMAIL_DATA: ${RM_ALERT_EMAIL_DATA:-data@example.com}
+      RM_SLACK_CHANNEL_CRITICAL: ${RM_SLACK_CHANNEL_CRITICAL:-#alerts-critical}
+    secrets: [smtp_password, slack_webhook]
+    networks: [app]
+    ports:
+      # Bound to loopback: reach it over SSH tunnel
+      - "127.0.0.1:9093:9093"
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "2"}
+    deploy:
+      resources:
+        limits: {memory: 256M, cpus: "0.25"}
 
   grafana:
     image: grafana/grafana:latest
@@ -362,9 +434,13 @@ secrets:
     file: ../secrets/minio_password
   grafana_password:
     file: ../secrets/grafana_password
+  slack_webhook:
+    file: ../secrets/slack_webhook
 
 volumes:
   certbot_webroot:
   certbot_certs:
+  backup_data:
   prometheus_data:
+  alertmanager_data:
   grafana_data:
